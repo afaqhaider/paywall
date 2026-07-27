@@ -10,7 +10,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
     "prisma:generate": "prisma generate",
@@ -35,8 +35,11 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.0.0",
+    "nestjs-pino": "^4.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pino-http": "^10.3.0",
+    "prisma": "^6.1.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -48,15 +51,15 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.10.2",
+    "@types/node": "catalog:",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
-    "prisma": "^6.1.0",
+    "pino-pretty": "^13.0.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
+    "typescript": "catalog:",
     "unplugin-swc": "^1.5.1",
-    "vitest": "^2.1.8"
+    "vitest": "catalog:"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

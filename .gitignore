@@ -16,9 +16,6 @@ out/
 .env.*.local
 !.env.example
 
-# Prisma
-apps/api/prisma/migrations/dev/
-
 # Logs
 *.log
 npm-debug.log*

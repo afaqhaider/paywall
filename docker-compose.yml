@@ -18,6 +18,19 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot job: applies pending Prisma migrations, then exits.
+  # The api service waits for this to finish successfully before starting.
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+      target: migrator
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://paywall:paywall_dev_password@postgres:5432/paywall?schema=public}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -25,20 +38,22 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${API_PORT:-4000}
+      # Fixed on purpose: must match the Dockerfile's EXPOSE/HEALTHCHECK port.
+      # Only the host-side mapping below is user-configurable (via API_PORT).
+      PORT: 4000
       DATABASE_URL: ${DATABASE_URL:-postgresql://paywall:paywall_dev_password@postgres:5432/paywall?schema=public}
       PLATFORM_VERSION: ${PLATFORM_VERSION:-0.1.0}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
+      RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-100}
     ports:
       - "${API_PORT:-4000}:4000"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
+      migrate:
+        condition: service_completed_successfully
 
   web:
     build:
@@ -49,7 +64,9 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${WEB_PORT:-3000}
+      # Fixed on purpose: must match the Dockerfile's EXPOSE/HEALTHCHECK port.
+      # Only the host-side mapping below is user-configurable (via WEB_PORT).
+      PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
       PLATFORM_VERSION: ${PLATFORM_VERSION:-0.1.0}
     ports:

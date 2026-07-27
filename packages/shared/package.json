@@ -15,15 +15,15 @@
     "build": "tsc",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@paywall/types": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

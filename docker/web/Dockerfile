@@ -10,8 +10,7 @@ FROM base AS pruner
 WORKDIR /app
 RUN corepack prepare pnpm@9.15.4 --activate
 COPY . .
-RUN pnpm add -g turbo@2.3.3
-RUN turbo prune web --docker
+RUN pnpm dlx turbo@2.3.3 prune web --docker
 
 # ---- Install: install dependencies from the pruned lockfile ----
 FROM base AS installer
@@ -20,10 +19,12 @@ RUN corepack prepare pnpm@9.15.4 --activate
 COPY --from=pruner /app/out/json/ .
 RUN pnpm install --frozen-lockfile
 COPY --from=pruner /app/out/full/ .
+# turbo prune only copies files owned by the pruned workspaces; the shared
+# root tsconfig every package's tsconfig.json extends lives outside that set.
+COPY tsconfig.base.json ./tsconfig.base.json
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-RUN pnpm add -g turbo@2.3.3
-RUN turbo run build --filter=web...
+RUN pnpm dlx turbo@2.3.3 run build --filter=web...
 
 # ---- Runner: minimal runtime image using Next.js standalone output ----
 FROM base AS runner
@@ -36,4 +37,6 @@ COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 USER nextjs
 EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=10 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 CMD ["node", "apps/web/server.js"]

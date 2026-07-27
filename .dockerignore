@@ -1,0 +1,35 @@
+# Dependencies (reinstalled inside the build; keeping these out of the
+# build context keeps `docker build` fast and avoids leaking host binaries)
+node_modules
+**/node_modules
+.pnpm-store
+
+# Build outputs (regenerated inside the build)
+**/dist
+**/build
+**/.next
+**/.turbo
+*.tsbuildinfo
+
+# Test artifacts
+**/coverage
+**/playwright-report
+**/test-results
+**/blob-report
+
+# Env files - never send local secrets into the build context
+.env
+.env.*
+!.env.example
+
+# VCS / editors / OS
+.git
+.github
+.husky
+.vscode
+.idea
+.DS_Store
+
+# Docs (not needed to build images)
+docs
+README.md

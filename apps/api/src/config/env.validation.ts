@@ -29,6 +29,22 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNotEmpty()
   WEB_ORIGIN?: string;
+
+  @IsOptional()
+  @IsIn(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+  LOG_LEVEL?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  RATE_LIMIT_TTL_MS?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  RATE_LIMIT_LIMIT?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  PLATFORM_VERSION?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

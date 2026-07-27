@@ -9,8 +9,12 @@
     "WEB_ORIGIN",
     "NEXT_PUBLIC_API_URL",
     "PLATFORM_VERSION",
-    "PORT"
+    "PORT",
+    "LOG_LEVEL",
+    "RATE_LIMIT_TTL_MS",
+    "RATE_LIMIT_LIMIT"
   ],
+  "globalPassThroughEnv": ["VITE_CJS_IGNORE_WARNING"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -30,11 +34,12 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": [],
+      "env": ["VITE_CJS_IGNORE_WARNING"]
     },
     "test:e2e": {
       "dependsOn": ["build"],
-      "outputs": ["playwright-report/**"]
+      "outputs": []
     },
     "clean": {
       "cache": false
