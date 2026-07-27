@@ -37,7 +37,14 @@ services:
       dockerfile: docker/api/Dockerfile
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      # Hardcoded, not interpolated from .env: docker-compose always builds
+      # the multi-stage production image (there is no separate dev
+      # Dockerfile), and that image ships without devDependencies like
+      # pino-pretty. .env's NODE_ENV=development is for host-side tooling
+      # (`pnpm dev`) only - letting it leak in here would make the app
+      # request a logging transport that was deliberately stripped from
+      # the runtime image.
+      NODE_ENV: production
       # Fixed on purpose: must match the Dockerfile's EXPOSE/HEALTHCHECK port.
       # Only the host-side mapping below is user-configurable (via API_PORT).
       PORT: 4000
@@ -64,7 +71,14 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      # Hardcoded, not interpolated from .env: docker-compose always builds
+      # the multi-stage production image (there is no separate dev
+      # Dockerfile), and that image ships without devDependencies like
+      # pino-pretty. .env's NODE_ENV=development is for host-side tooling
+      # (`pnpm dev`) only - letting it leak in here would make the app
+      # request a logging transport that was deliberately stripped from
+      # the runtime image.
+      NODE_ENV: production
       # Fixed on purpose: must match the Dockerfile's EXPOSE/HEALTHCHECK port.
       # Only the host-side mapping below is user-configurable (via WEB_PORT).
       PORT: 3000
