@@ -6,6 +6,7 @@ export interface RecordAuditEventInput {
   action: AuditAction;
   userId?: string;
   organizationId?: string;
+  applicationId?: string;
   metadata?: Prisma.InputJsonValue;
   ipAddress?: string;
   userAgent?: string;
@@ -21,6 +22,7 @@ export class AuditService {
         action: input.action,
         userId: input.userId,
         organizationId: input.organizationId,
+        applicationId: input.applicationId,
         metadata: input.metadata,
         ipAddress: input.ipAddress,
         userAgent: input.userAgent,
@@ -31,6 +33,14 @@ export class AuditService {
   async listForOrganization(organizationId: string, take = 50) {
     return this.prisma.auditLog.findMany({
       where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  }
+
+  async listForApplication(applicationId: string, take = 50) {
+    return this.prisma.auditLog.findMany({
+      where: { applicationId },
       orderBy: { createdAt: "desc" },
       take,
     });

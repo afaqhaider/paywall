@@ -1,5 +1,5 @@
-// Phase 2: Identity & Authentication Platform.
-// Subscriptions, payments, licensing, app registry, analytics: not yet.
+// Phase 3: Application Registry.
+// Subscriptions, payments, licensing, analytics: not yet.
 
 generator client {
   provider      = "prisma-client-js"
@@ -20,6 +20,53 @@ enum OrganizationRole {
   VIEWER
 }
 
+enum ApplicationMemberRole {
+  OWNER
+  ADMINISTRATOR
+  DEVELOPER
+  TESTER
+  SUPPORT
+  VIEWER
+}
+
+enum ApplicationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ApplicationVisibility {
+  PRIVATE
+  INTERNAL
+}
+
+enum ApplicationEnvironmentType {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum ApplicationSecretType {
+  API_KEY
+  WEBHOOK_SECRET
+  JWT_SECRET
+  OAUTH_CREDENTIAL
+  PAYMENT_CREDENTIAL
+  OTHER
+}
+
+enum DomainSslStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  EXPIRED
+}
+
+enum DomainVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
 enum AuditAction {
   USER_REGISTERED
   LOGIN_SUCCEEDED
@@ -36,6 +83,27 @@ enum AuditAction {
   ORGANIZATION_ROLE_CHANGED
   ORGANIZATION_MEMBER_REMOVED
   SESSION_REVOKED
+  APPLICATION_CREATED
+  APPLICATION_UPDATED
+  APPLICATION_ARCHIVED
+  APPLICATION_RESTORED
+  APPLICATION_DELETED
+  APPLICATION_MEMBER_ADDED
+  APPLICATION_MEMBER_ROLE_CHANGED
+  APPLICATION_MEMBER_REMOVED
+  APPLICATION_VERSION_CREATED
+  APPLICATION_VERSION_UPDATED
+  APPLICATION_VERSION_DELETED
+  APPLICATION_ENVIRONMENT_CREATED
+  APPLICATION_ENVIRONMENT_UPDATED
+  APPLICATION_DOMAIN_ADDED
+  APPLICATION_DOMAIN_UPDATED
+  APPLICATION_DOMAIN_REMOVED
+  APPLICATION_DOMAIN_VERIFIED
+  APPLICATION_SECRET_CREATED
+  APPLICATION_SECRET_ROTATED
+  APPLICATION_SECRET_REMOVED
+  APPLICATION_SETTING_UPDATED
 }
 
 model User {
@@ -58,11 +126,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions                Session[]
-  emailVerificationTokens EmailVerificationToken[]
-  passwordResetTokens     PasswordResetToken[]
-  organizationMemberships OrganizationMember[]
-  auditLogs               AuditLog[]
+  sessions                   Session[]
+  emailVerificationTokens    EmailVerificationToken[]
+  passwordResetTokens        PasswordResetToken[]
+  organizationMemberships    OrganizationMember[]
+  auditLogs                  AuditLog[]
+  applicationMemberships     ApplicationMember[]
+  createdApplications        Application[]
+  createdApplicationVersions ApplicationVersion[]
+  createdApplicationSecrets  ApplicationSecret[]
 
   @@map("users")
 }
@@ -119,8 +191,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   OrganizationMember[]
-  auditLogs AuditLog[]
+  members      OrganizationMember[]
+  auditLogs    AuditLog[]
+  applications Application[]
 
   @@map("organizations")
 }
@@ -147,6 +220,8 @@ model AuditLog {
   user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  applicationId  String?
+  application    Application?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   metadata       Json?
   ipAddress      String?
   userAgent      String?
@@ -154,5 +229,182 @@ model AuditLog {
 
   @@index([userId])
   @@index([organizationId])
+  @@index([applicationId])
   @@map("audit_logs")
+}
+
+/// The single source of truth for every application in the SS Zentronics
+/// ecosystem (e.g. LedGix ERP, LedGix Expense, Taskue, HydroMetrix, Tower
+/// Dominion). Owned by exactly one Organization; per-application access is
+/// governed by ApplicationMember, with an OWNER/ADMINISTRATOR of the owning
+/// organization always retaining override access (see ApplicationRoleGuard).
+model Application {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name             String
+  slug             String                @unique
+  displayName      String?
+  description      String?
+  category         String?
+  bundleIdentifier String?               @unique
+  packageName      String?               @unique
+  webIdentifier    String?               @unique
+  logoUrl          String?
+  iconUrl          String?
+  primaryColor     String?
+  status           ApplicationStatus     @default(ACTIVE)
+  visibility       ApplicationVisibility @default(PRIVATE)
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  versions     ApplicationVersion[]
+  environments ApplicationEnvironment[]
+  secrets      ApplicationSecret[]
+  domains      ApplicationDomain[]
+  settings     ApplicationSetting[]
+  members      ApplicationMember[]
+  auditLogs    AuditLog[]
+
+  @@index([organizationId])
+  @@map("applications")
+}
+
+/// One row per release on a track (e.g. "stable", "beta") - all platforms
+/// ship together in a single release event. `isLatest` marks the current
+/// release for that track; older rows are release history.
+model ApplicationVersion {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  track                   String    @default("stable")
+  androidVersion          String?
+  iosVersion              String?
+  webVersion              String?
+  buildNumber             String?
+  minimumSupportedVersion String?
+  releaseNotes            String?
+  releaseDate             DateTime?
+  isLatest                Boolean   @default(false)
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([applicationId])
+  @@index([applicationId, track])
+  @@map("application_versions")
+}
+
+/// One row per (application, environment type). Holds environment-specific
+/// URLs plus free-form JSON for environment variables and feature flags.
+model ApplicationEnvironment {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  type         ApplicationEnvironmentType
+  baseUrl      String?
+  apiUrl       String?
+  variables    Json?
+  featureFlags Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  secrets ApplicationSecret[]
+
+  @@unique([applicationId, type])
+  @@map("application_environments")
+}
+
+/// Encrypted (AES-256-GCM) storage for API keys, webhook secrets, JWT
+/// secrets, OAuth credentials, and future payment credentials. The
+/// plaintext value is never persisted and never returned by any API -
+/// only `lastFour` (a display hint) and metadata are exposed.
+model ApplicationSecret {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  environmentId String?
+  environment   ApplicationEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  type           ApplicationSecretType
+  key            String
+  encryptedValue String
+  iv             String
+  authTag        String
+  lastFour       String?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  rotatedAt   DateTime?
+
+  @@unique([applicationId, environmentId, key])
+  @@index([applicationId])
+  @@map("application_secrets")
+}
+
+/// Custom domains an application is reachable on. Exactly one domain per
+/// application may have `isPrimary = true` (enforced in service logic, the
+/// same way OrganizationsService enforces last-owner protection).
+model ApplicationDomain {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  domain             String                   @unique
+  isPrimary          Boolean                  @default(false)
+  sslStatus          DomainSslStatus          @default(PENDING)
+  verificationStatus DomainVerificationStatus @default(PENDING)
+  verificationToken  String?
+  verifiedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([applicationId])
+  @@map("application_domains")
+}
+
+/// Application-level key/value settings (maintenance mode, public
+/// registration, allow invitations, support email, theme, branding, ...).
+model ApplicationSetting {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  key   String
+  value Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, key])
+  @@map("application_settings")
+}
+
+model ApplicationMember {
+  id            String                @id @default(uuid())
+  applicationId String
+  application   Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role          ApplicationMemberRole @default(VIEWER)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([applicationId, userId])
+  @@index([userId])
+  @@map("application_members")
 }

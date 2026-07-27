@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
+import { ApplicationsModule } from "./applications/applications.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { validateEnv } from "./config/env.validation";
@@ -54,6 +55,7 @@ import { UsersModule } from "./users/users.module";
     UsersModule,
     ProfileModule,
     OrganizationsModule,
+    ApplicationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

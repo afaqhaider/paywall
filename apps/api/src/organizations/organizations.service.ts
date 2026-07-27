@@ -100,7 +100,9 @@ export class OrganizationsService {
   }
 
   async remove(organizationId: string, userId: string, meta: RequestMeta) {
-    await this.prisma.organization.delete({ where: { id: organizationId } });
+    // Record the audit event before deleting: AuditLog.organizationId is a
+    // real foreign key, so inserting a row that references this organization
+    // AFTER it's gone would fail the constraint - not merely be nullified.
     await this.auditService.record({
       action: "ORGANIZATION_UPDATED",
       userId,
@@ -108,6 +110,7 @@ export class OrganizationsService {
       metadata: { action: "deleted" },
       ...meta,
     });
+    await this.prisma.organization.delete({ where: { id: organizationId } });
   }
 
   async listMembers(organizationId: string) {
