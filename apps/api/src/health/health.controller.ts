@@ -1,7 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Res } from "@nestjs/common";
 import type { Response } from "express";
 import type { HealthStatus } from "@paywall/types";
-import type { HealthService } from "./health.service";
+import { HealthService } from "./health.service";
 
 @Controller("health")
 export class HealthController {

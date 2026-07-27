@@ -35,4 +35,13 @@ export default tseslint.config(
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  {
+    // NestJS relies on emitDecoratorMetadata for constructor-based dependency
+    // injection: auto-fixing a constructor-injected class import to `import type`
+    // erases the runtime reference Nest needs to resolve the provider, breaking DI.
+    files: ["apps/api/**/*.ts"],
+    rules: {
+      "@typescript-eslint/consistent-type-imports": "off",
+    },
+  },
 );

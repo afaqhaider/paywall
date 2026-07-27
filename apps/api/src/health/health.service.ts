@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { HealthStatus, ServiceStatus } from "@paywall/types";
 import { PLATFORM_VERSION } from "@paywall/shared";
-import type { PrismaService } from "../prisma/prisma.service";
+import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class HealthService {
