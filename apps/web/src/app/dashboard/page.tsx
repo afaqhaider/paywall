@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   Alert,
   Badge,
@@ -30,7 +30,7 @@ function DashboardContent() {
   const [error, setError] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
 
-  async function loadOrganizations() {
+  const loadOrganizations = useCallback(async () => {
     setLoading(true);
     try {
       const orgs = await authedFetch<OrgSummary[]>("/organizations");
@@ -42,11 +42,11 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [authedFetch]);
 
   useEffect(() => {
     void loadOrganizations();
-  }, []);
+  }, [loadOrganizations]);
 
   function handleSelectOrg(orgId: string) {
     setSelectedOrgId(orgId);

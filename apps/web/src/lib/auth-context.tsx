@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void refreshSession();
-  }, []);
+  }, [refreshSession]);
 
   const login = useCallback(
     async (email: string, password: string, rememberMe = false) => {

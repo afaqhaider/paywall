@@ -38,7 +38,7 @@ function ProfileContent() {
     authedFetch<Profile>("/profile")
       .then(setProfile)
       .catch(() => setProfile(null));
-  }, []);
+  }, [authedFetch]);
 
   async function handleSave(event: FormEvent) {
     event.preventDefault();
