@@ -1,0 +1,40 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { PLATFORM_NAME } from "@paywall/shared";
+import { Button } from "@paywall/ui";
+import { useAuth } from "../lib/auth-context";
+
+export function DashboardNav({ children }: { children?: React.ReactNode }) {
+  const { user, logout } = useAuth();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await logout();
+    router.push("/login");
+  }
+
+  return (
+    <header className="border-b border-slate-200 bg-white">
+      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <Link href="/dashboard" className="text-base font-semibold tracking-tight text-slate-900">
+          {PLATFORM_NAME}
+        </Link>
+        <nav className="flex items-center gap-4 text-sm text-slate-600">
+          <Link href="/dashboard" className="hover:text-slate-900">
+            Dashboard
+          </Link>
+          <Link href="/dashboard/profile" className="hover:text-slate-900">
+            Profile
+          </Link>
+          {children}
+          <span className="hidden text-slate-400 sm:inline">{user?.email}</span>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Log out
+          </Button>
+        </nav>
+      </div>
+    </header>
+  );
+}

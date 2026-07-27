@@ -2,11 +2,13 @@ import { Controller, Get, HttpCode, HttpStatus, Res } from "@nestjs/common";
 import type { Response } from "express";
 import type { HealthStatus } from "@paywall/types";
 import { HealthService } from "./health.service";
+import { Public } from "../common/decorators/public.decorator";
 
 @Controller("health")
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
+  @Public()
   @Get()
   @HttpCode(HttpStatus.OK)
   async check(@Res({ passthrough: true }) res: Response): Promise<HealthStatus> {

@@ -8,10 +8,27 @@ on:
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
+  DATABASE_URL: postgresql://paywall:paywall_ci_password@localhost:5432/paywall?schema=public
+  JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-use-1234567890
+  WEB_ORIGIN: http://localhost:3000
 
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: paywall
+          POSTGRES_PASSWORD: paywall_ci_password
+          POSTGRES_DB: paywall
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paywall -d paywall"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,7 +54,10 @@ jobs:
       - name: Type check
         run: pnpm type-check
 
-      - name: Unit tests
+      - name: Apply database migrations
+        run: pnpm --filter api exec prisma migrate deploy
+
+      - name: Unit + integration tests
         run: pnpm test
 
       - name: Build

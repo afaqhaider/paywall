@@ -1,0 +1,407 @@
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import type { Session, User } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import { MailService } from "../mail/mail.service";
+import { AuditService } from "../audit/audit.service";
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../common/utils/password.util";
+import { generateOpaqueToken, hashOpaqueToken } from "../common/utils/token.util";
+import type { RequestMeta } from "../common/utils/request-meta.util";
+import {
+  ACCESS_TOKEN_TTL_MS,
+  EMAIL_VERIFICATION_TTL_MS,
+  PASSWORD_RESET_TTL_MS,
+  REFRESH_TOKEN_TTL_MS,
+} from "./auth.constants";
+import type { RegisterDto } from "./dto/register.dto";
+import type { LoginDto } from "./dto/login.dto";
+
+export interface PublicUser {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface TokenPair {
+  accessToken: string;
+  accessTokenExpiresInMs: number;
+  refreshToken: string;
+  refreshTokenExpiresAt: Date;
+  user: PublicUser;
+}
+
+function toPublicUser(user: User): PublicUser {
+  return {
+    id: user.id,
+    email: user.email,
+    emailVerified: user.emailVerified,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+  };
+}
+
+@Injectable()
+export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  async register(dto: RegisterDto, meta: RequestMeta): Promise<PublicUser> {
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existing) {
+      throw new ConflictException("An account with this email already exists");
+    }
+
+    const passwordHash = await hashPassword(dto.password);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        displayName: dto.firstName ? `${dto.firstName} ${dto.lastName ?? ""}`.trim() : undefined,
+      },
+    });
+
+    await this.auditService.record({
+      action: "USER_REGISTERED",
+      userId: user.id,
+      ...meta,
+    });
+
+    await this.issueEmailVerification(user, meta);
+
+    return toPublicUser(user);
+  }
+
+  async issueEmailVerification(user: User, meta: RequestMeta): Promise<void> {
+    const { token, tokenHash } = generateOpaqueToken();
+
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+      },
+    });
+
+    await this.auditService.record({
+      action: "EMAIL_VERIFICATION_REQUESTED",
+      userId: user.id,
+      ...meta,
+    });
+
+    const verifyUrl = `${this.webOrigin()}/verify-email?token=${token}`;
+    await this.mailService.sendVerificationEmail(user.email, verifyUrl);
+  }
+
+  async resendVerification(userId: string, meta: RequestMeta): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+    if (user.emailVerified) {
+      throw new BadRequestException("Email is already verified");
+    }
+
+    await this.issueEmailVerification(user, meta);
+  }
+
+  async verifyEmail(rawToken: string, meta: RequestMeta): Promise<void> {
+    const tokenHash = hashOpaqueToken(rawToken);
+    const record = await this.prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
+
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException("Invalid or expired verification token");
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.emailVerificationToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerified: true, emailVerifiedAt: new Date() },
+      }),
+    ]);
+
+    await this.auditService.record({
+      action: "EMAIL_VERIFIED",
+      userId: record.userId,
+      ...meta,
+    });
+  }
+
+  async login(dto: LoginDto, meta: RequestMeta): Promise<TokenPair> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+
+    // Always run a hash comparison, even for an unknown email, so response
+    // timing doesn't reveal whether the account exists.
+    const passwordMatches = await verifyPassword(
+      dto.password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+
+    if (!user || !passwordMatches || !user.isActive) {
+      await this.auditService.record({
+        action: "LOGIN_FAILED",
+        userId: user?.id,
+        metadata: { email: dto.email },
+        ...meta,
+      });
+      throw new UnauthorizedException("Invalid email or password");
+    }
+
+    const pair = await this.issueTokenPair(user, meta, {
+      rememberMe: dto.rememberMe ?? false,
+      deviceName: dto.deviceName,
+    });
+
+    await this.auditService.record({
+      action: "LOGIN_SUCCEEDED",
+      userId: user.id,
+      ...meta,
+    });
+
+    return pair;
+  }
+
+  async issueTokenPair(
+    user: User,
+    meta: RequestMeta,
+    options: { rememberMe: boolean; deviceName?: string; replaces?: Session },
+  ): Promise<TokenPair> {
+    const accessToken = await this.jwtService.signAsync({ sub: user.id, email: user.email });
+    const { token: refreshToken, tokenHash } = generateOpaqueToken();
+    const ttl = options.rememberMe ? REFRESH_TOKEN_TTL_MS.rememberMe : REFRESH_TOKEN_TTL_MS.default;
+    const refreshTokenExpiresAt = new Date(Date.now() + ttl);
+
+    const session = await this.prisma.session.create({
+      data: {
+        userId: user.id,
+        refreshTokenHash: tokenHash,
+        rememberMe: options.rememberMe,
+        deviceName: options.deviceName,
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+        expiresAt: refreshTokenExpiresAt,
+      },
+    });
+
+    if (options.replaces) {
+      await this.prisma.session.update({
+        where: { id: options.replaces.id },
+        data: { revokedAt: new Date(), replacedById: session.id },
+      });
+    }
+
+    return {
+      accessToken,
+      accessTokenExpiresInMs: ACCESS_TOKEN_TTL_MS,
+      refreshToken,
+      refreshTokenExpiresAt,
+      user: toPublicUser(user),
+    };
+  }
+
+  async refresh(rawRefreshToken: string, meta: RequestMeta): Promise<TokenPair> {
+    const tokenHash = hashOpaqueToken(rawRefreshToken);
+    const session = await this.prisma.session.findUnique({
+      where: { refreshTokenHash: tokenHash },
+      include: { user: true },
+    });
+
+    if (!session) {
+      throw new UnauthorizedException("Invalid session");
+    }
+
+    if (session.revokedAt) {
+      // A previously-rotated-out (or already revoked) token was replayed:
+      // treat this as token theft and kill every active session for the user.
+      this.logger.warn(`Refresh token reuse detected for user ${session.userId}`);
+      await this.revokeAllSessions(session.userId);
+      await this.auditService.record({
+        action: "SESSION_REVOKED",
+        userId: session.userId,
+        metadata: { reason: "refresh_token_reuse_detected" },
+        ...meta,
+      });
+      throw new UnauthorizedException("Session revoked");
+    }
+
+    if (session.expiresAt < new Date()) {
+      throw new UnauthorizedException("Session expired");
+    }
+
+    return this.issueTokenPair(session.user, meta, {
+      rememberMe: session.rememberMe,
+      deviceName: session.deviceName ?? undefined,
+      replaces: session,
+    });
+  }
+
+  async logout(rawRefreshToken: string | undefined, meta: RequestMeta): Promise<void> {
+    if (!rawRefreshToken) {
+      return;
+    }
+
+    const tokenHash = hashOpaqueToken(rawRefreshToken);
+    const session = await this.prisma.session.findUnique({
+      where: { refreshTokenHash: tokenHash },
+    });
+
+    if (session && !session.revokedAt) {
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+      await this.auditService.record({
+        action: "LOGOUT",
+        userId: session.userId,
+        ...meta,
+      });
+    }
+  }
+
+  async listSessions(userId: string) {
+    return this.prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { lastUsedAt: "desc" },
+      select: {
+        id: true,
+        deviceName: true,
+        userAgent: true,
+        ipAddress: true,
+        rememberMe: true,
+        lastUsedAt: true,
+        createdAt: true,
+        expiresAt: true,
+      },
+    });
+  }
+
+  async revokeSession(userId: string, sessionId: string, meta: RequestMeta): Promise<void> {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
+    if (!session || session.userId !== userId) {
+      throw new BadRequestException("Session not found");
+    }
+
+    await this.prisma.session.update({
+      where: { id: sessionId },
+      data: { revokedAt: new Date() },
+    });
+
+    await this.auditService.record({ action: "SESSION_REVOKED", userId, ...meta });
+  }
+
+  private async revokeAllSessions(userId: string): Promise<void> {
+    await this.prisma.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  async forgotPassword(email: string, meta: RequestMeta): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    await this.auditService.record({
+      action: "PASSWORD_RESET_REQUESTED",
+      userId: user?.id,
+      metadata: { email },
+      ...meta,
+    });
+
+    // Always behave the same way whether or not the account exists, so the
+    // response can't be used to enumerate registered emails.
+    if (!user || !user.isActive) {
+      return;
+    }
+
+    const { token, tokenHash } = generateOpaqueToken();
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const resetUrl = `${this.webOrigin()}/reset-password?token=${token}`;
+    await this.mailService.sendPasswordResetEmail(user.email, resetUrl);
+  }
+
+  async resetPassword(rawToken: string, newPassword: string, meta: RequestMeta): Promise<void> {
+    const tokenHash = hashOpaqueToken(rawToken);
+    const record = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException("Invalid or expired reset token");
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+
+    await this.prisma.$transaction([
+      this.prisma.passwordResetToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { passwordHash },
+      }),
+    ]);
+
+    await this.revokeAllSessions(record.userId);
+
+    await this.auditService.record({
+      action: "PASSWORD_RESET_COMPLETED",
+      userId: record.userId,
+      ...meta,
+    });
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    meta: RequestMeta,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const matches = await verifyPassword(currentPassword, user.passwordHash);
+
+    if (!matches) {
+      throw new BadRequestException("Current password is incorrect");
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.revokeAllSessions(userId);
+
+    await this.auditService.record({
+      action: "PASSWORD_CHANGED",
+      userId,
+      ...meta,
+    });
+  }
+
+  private webOrigin(): string {
+    return process.env.WEB_ORIGIN ?? "http://localhost:3000";
+  }
+}
