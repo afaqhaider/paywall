@@ -37,6 +37,10 @@ COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 USER nextjs
 EXPOSE 3000
+# 127.0.0.1, not localhost: Next's standalone server binds to a single
+# explicit address (see HOSTNAME in docker-compose.yml), so it only accepts
+# IPv4 connections - but this image's "localhost" can resolve to the IPv6
+# loopback first, making an otherwise-healthy server look unreachable.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=10 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
 CMD ["node", "apps/web/server.js"]

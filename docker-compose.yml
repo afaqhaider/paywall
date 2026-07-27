@@ -82,6 +82,15 @@ services:
       # Fixed on purpose: must match the Dockerfile's EXPOSE/HEALTHCHECK port.
       # Only the host-side mapping below is user-configurable (via WEB_PORT).
       PORT: 3000
+      # Next's standalone server.js does `hostname = process.env.HOSTNAME || '0.0.0.0'`.
+      # Docker auto-sets HOSTNAME to the container ID, which resolves (via the
+      # container's own /etc/hosts entry) to its bridge-network IP - not
+      # loopback - so the server would bind only to that address. The
+      # HEALTHCHECK (and anything hitting `localhost` from inside the
+      # container) would then always fail even though external traffic via
+      # the port mapping works fine. Force it back to listening on all
+      # interfaces.
+      HOSTNAME: "0.0.0.0"
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
       PLATFORM_VERSION: ${PLATFORM_VERSION:-0.1.0}
     ports:
