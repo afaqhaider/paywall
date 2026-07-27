@@ -3,18 +3,20 @@
 A self-hosted, RevenueCat-style **subscription, licensing & entitlement
 platform** for the SS Zentronics ecosystem of applications.
 
-> **Status: Phase 1 - Foundation.** This repository currently contains only
-> the project scaffolding (monorepo tooling, base apps, Docker Compose stack,
-> health checks). Authentication, billing, subscriptions and all other
-> business logic are intentionally **not yet implemented** - see
+> **Status: Phase 3 - Application Registry.** Foundation (Phase 1), Identity
+> & Authentication (Phase 2), and the Application Registry (Phase 3) are
+> live. Billing, subscriptions, licensing, and the rest of the roadmap are
+> intentionally **not yet implemented** - see
 > [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the full roadmap.
 
-## Planned platform capabilities
+## Platform capabilities
 
-- Authentication - User Management - Subscription Management
-- App Registry - Developer Portal - Customer Portal - Admin Portal
-- License & Entitlement Engine - Payment Providers - Webhooks
-- Analytics - Public API for Mobile & Web apps
+- ✅ Authentication & user management (JWT + rotating refresh tokens, email verification, password reset, sessions)
+- ✅ Organizations with role-based membership
+- ✅ Application Registry (versions, environments, encrypted secrets, domains, settings, members)
+- ⏳ Subscription Management - License & Entitlement Engine - Payment Providers
+- ⏳ Webhooks - Developer Portal - Customer Portal - Admin Portal
+- ⏳ Analytics - Public API for Mobile & Web apps
 
 ## Tech stack
 
@@ -24,7 +26,7 @@ platform** for the SS Zentronics ecosystem of applications.
 | Backend         | NestJS, TypeScript                                 |
 | Database        | PostgreSQL                                         |
 | ORM             | Prisma                                             |
-| Auth (planned)  | Better Auth                                        |
+| Auth            | JWT access tokens + rotating opaque refresh tokens |
 | Package manager | pnpm                                               |
 | Monorepo        | Turborepo                                          |
 | Containers      | Docker, Docker Compose                             |

@@ -4,8 +4,10 @@
 
 The **SS Zentronics Platform** ("paywall") is a monorepo housing every service
 required to run a self-hosted RevenueCat-style subscription, licensing and
-entitlement platform. This document describes the Phase 1 (foundation) state
-of the system.
+entitlement platform. This document reflects the state through Phase 3
+(Application Registry) - Phase 1 (foundation), Phase 2 (Identity &
+Authentication), and Phase 3 are all implemented; billing, licensing, and the
+rest of the roadmap below are not.
 
 ## Monorepo layout
 
@@ -40,27 +42,19 @@ paywall/
 - **Docker Compose**: the entire stack (db, api, web) must boot with a single
   command on a developer machine with zero cloud dependencies.
 
-## Planned domain modules (not implemented yet)
+## Remaining domain modules (not implemented yet)
 
-These are documented here to guide future package/module boundaries, but are
-explicitly **out of scope** for the Phase 1 foundation:
+Explicitly **out of scope** through Phase 3:
 
-- Authentication (Better Auth)
-- User Management
 - Subscription Management
-- App Registry (multi-tenant app/product registration)
-- Developer Portal
-- Customer Portal
-- Admin Portal
+- Developer Portal, Customer Portal, Admin Portal
 - License & Entitlement Engine
 - Payment Providers (Stripe, Paddle, etc.)
 - Webhooks (inbound/outbound)
 - Analytics
 - Public API for mobile & web SDKs
 
-## Phase 1 scope
-
-Phase 1 delivers only the foundation:
+## Phase 1 scope - Foundation
 
 1. Monorepo tooling (Turborepo, pnpm, ESLint, Prettier, Husky, lint-staged)
 2. Base NestJS API with a `/health` endpoint that verifies DB connectivity
@@ -69,4 +63,26 @@ Phase 1 delivers only the foundation:
 5. Docker Compose bringing up postgres + api + web together
 6. CI pipeline (lint, type-check, test, build, docker build)
 
-No authentication, billing, or business logic exists yet by design.
+## Phase 2 scope - Identity & Authentication
+
+1. JWT access tokens (15 min) + opaque, hashed, rotating refresh tokens with
+   reuse detection (a replayed rotated-out token revokes the whole session)
+2. Email verification, forgot/reset/change password (email delivery is
+   console-logged - no external provider, by design, to stay 100% local)
+3. Organizations with role-based membership (OWNER > ADMINISTRATOR >
+   DEVELOPER/MANAGER > MEMBER > VIEWER), last-owner protection
+4. Audit logging, security middleware (Helmet, rate limiting, CORS,
+   double-submit CSRF cookies, strong password policy, global validation)
+
+## Phase 3 scope - Application Registry
+
+1. `apps/api/src/applications/` - the single source of truth for every
+   application in the ecosystem: `Application`, `ApplicationVersion`,
+   `ApplicationEnvironment`, `ApplicationSecret`, `ApplicationDomain`,
+   `ApplicationSetting`, `ApplicationMember`
+2. Per-application roles (OWNER > ADMINISTRATOR > DEVELOPER > TESTER/SUPPORT
+   > VIEWER), with an org OWNER/ADMINISTRATOR always retaining override
+   > access, and a strict cross-organization isolation guarantee
+3. Secrets encrypted at rest (AES-256-GCM) - plaintext never persisted, never
+   returned by any endpoint
+4. 9 web pages under `/dashboard/apps` covering the full registry surface
