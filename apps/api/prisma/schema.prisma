@@ -1,0 +1,12 @@
+// Phase 1 foundation: no domain models yet.
+// Auth, users, subscriptions, entitlements, etc. will be added in later phases.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
