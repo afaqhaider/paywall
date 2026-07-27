@@ -10,6 +10,7 @@ env:
   TURBO_TELEMETRY_DISABLED: 1
   DATABASE_URL: postgresql://paywall:paywall_ci_password@localhost:5432/paywall?schema=public
   JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-use-1234567890
+  APP_SECRET_ENCRYPTION_KEY: eZpZg2tPjZMEudszgRdEtfdXZcZRJV89WaGjOTu2LhY=
   WEB_ORIGIN: http://localhost:3000
 
 jobs:

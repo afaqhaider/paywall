@@ -51,6 +51,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://paywall:paywall_dev_password@postgres:5432/paywall?schema=public}
       PLATFORM_VERSION: ${PLATFORM_VERSION:-0.1.0}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET must be set - copy .env.example to .env and generate one}
+      APP_SECRET_ENCRYPTION_KEY: ${APP_SECRET_ENCRYPTION_KEY:?APP_SECRET_ENCRYPTION_KEY must be set - generate one with `openssl rand -base64 32`}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
