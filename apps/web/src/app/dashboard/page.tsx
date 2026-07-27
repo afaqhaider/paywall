@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
   Alert,
   Badge,
@@ -14,44 +14,18 @@ import {
 } from "@paywall/ui";
 import { ProtectedRoute } from "../../components/protected-route";
 import { DashboardNav } from "../../components/dashboard-nav";
-import { OrgSwitcher, type OrgSummary } from "../../components/org-switcher";
+import { OrgSwitcher } from "../../components/org-switcher";
 import { useAuth } from "../../lib/auth-context";
+import { useOrg } from "../../lib/org-context";
 import { ApiError } from "../../lib/api-client";
-
-const SELECTED_ORG_KEY = "ssz.selectedOrgId";
 
 function DashboardContent() {
   const { user, authedFetch } = useAuth();
-  const [organizations, setOrganizations] = useState<OrgSummary[]>([]);
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { organizations, selectedOrgId, selectedOrg, loading, selectOrg, refresh } = useOrg();
   const [newOrgName, setNewOrgName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
-
-  const loadOrganizations = useCallback(async () => {
-    setLoading(true);
-    try {
-      const orgs = await authedFetch<OrgSummary[]>("/organizations");
-      setOrganizations(orgs);
-      const stored =
-        typeof window !== "undefined" ? window.localStorage.getItem(SELECTED_ORG_KEY) : null;
-      const stillValid = stored && orgs.some((o) => o.id === stored);
-      setSelectedOrgId(stillValid ? stored : (orgs[0]?.id ?? null));
-    } finally {
-      setLoading(false);
-    }
-  }, [authedFetch]);
-
-  useEffect(() => {
-    void loadOrganizations();
-  }, [loadOrganizations]);
-
-  function handleSelectOrg(orgId: string) {
-    setSelectedOrgId(orgId);
-    window.localStorage.setItem(SELECTED_ORG_KEY, orgId);
-  }
 
   async function handleCreateOrg(event: FormEvent) {
     event.preventDefault();
@@ -63,7 +37,7 @@ function DashboardContent() {
         body: JSON.stringify({ name: newOrgName }),
       });
       setNewOrgName("");
-      await loadOrganizations();
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create organization.");
     } finally {
@@ -85,15 +59,13 @@ function DashboardContent() {
     }
   }
 
-  const selectedOrg = organizations.find((o) => o.id === selectedOrgId);
-
   return (
     <>
       <DashboardNav>
         <OrgSwitcher
           organizations={organizations}
           selectedOrgId={selectedOrgId}
-          onSelect={handleSelectOrg}
+          onSelect={selectOrg}
         />
       </DashboardNav>
       <main className="mx-auto max-w-5xl px-6 py-10">
