@@ -223,6 +223,75 @@ enum CouponStatus {
   EXPIRED
 }
 
+// ---- Entitlement & License Engine enums (Phase 6) ----
+
+enum EntitlementGrantSource {
+  SUBSCRIPTION
+  TRIAL
+  MANUAL
+  PROMOTIONAL
+}
+
+enum EntitlementGrantStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum LicenseType {
+  INDIVIDUAL
+  ORGANIZATION
+  SEAT
+  DEVICE
+  LIFETIME
+  TRIAL
+  ENTERPRISE
+  TEMPORARY
+  MANUAL
+}
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+  EXPIRED
+}
+
+enum SeatStatus {
+  AVAILABLE
+  ASSIGNED
+  PENDING
+  INACTIVE
+}
+
+enum SeatAssignmentStatus {
+  PENDING
+  ACTIVE
+  REMOVED
+  TRANSFERRED
+}
+
+enum UsageResetPolicy {
+  NEVER
+  MONTHLY
+  YEARLY
+  LIFETIME
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+  DESKTOP
+  OTHER
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
 enum AuditAction {
   USER_REGISTERED
   LOGIN_SUCCEEDED
@@ -297,6 +366,24 @@ enum AuditAction {
   CHECKOUT_SESSION_CREATED
   PAYMENT_REFUND_CREATED
   PAYMENT_METHOD_REMOVED
+  ENTITLEMENT_GRANT_CREATED
+  ENTITLEMENT_GRANT_REVOKED
+  LICENSE_CREATED
+  LICENSE_UPDATED
+  LICENSE_REVOKED
+  LICENSE_KEY_GENERATED
+  LICENSE_KEY_ACTIVATED
+  LICENSE_KEY_REVOKED
+  LICENSE_KEY_TRANSFERRED
+  SEAT_ASSIGNED
+  SEAT_REMOVED
+  SEAT_TRANSFERRED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  API_KEY_ROTATED
+  DEVICE_REGISTERED
+  DEVICE_REVOKED
+  USAGE_LIMIT_UPDATED
 }
 
 // ---------------------------------------------------------------------------
@@ -817,6 +904,12 @@ model User {
   createdPaymentProviders    PaymentProvider[]
   createdProviderCredentials ProviderCredential[]
   createdPaymentRefunds      PaymentRefund[]
+  createdLicenses            License[]
+  licenseAssignments         LicenseAssignment[]
+  seatAssignments            SeatAssignment[]
+  createdApiClients          APIClient[]
+  deviceRegistrations        DeviceRegistration[]
+  entitlementGrantEvents     EntitlementGrantEvent[]
 
   @@map("users")
 }
@@ -873,14 +966,19 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members          OrganizationMember[]
-  auditLogs        AuditLog[]
-  applications     Application[]
-  products         Product[]
-  customers        Customer[]
-  subscriptions    Subscription[]
-  coupons          Coupon[]
-  paymentProviders PaymentProvider[]
+  members             OrganizationMember[]
+  auditLogs           AuditLog[]
+  applications        Application[]
+  products            Product[]
+  customers           Customer[]
+  subscriptions       Subscription[]
+  coupons             Coupon[]
+  paymentProviders    PaymentProvider[]
+  entitlementGrants   EntitlementGrant[]
+  featureAccess       FeatureAccess[]
+  licenses            License[]
+  apiClients          APIClient[]
+  deviceRegistrations DeviceRegistration[]
 
   @@map("organizations")
 }
@@ -962,6 +1060,13 @@ model Application {
   entitlementDefinitions EntitlementDefinition[]
   customers              Customer[]
   subscriptions          Subscription[]
+  entitlementGrants      EntitlementGrant[]
+  licenses               License[]
+  featureAccess          FeatureAccess[]
+  usageLimits            UsageLimit[]
+  usageCounters          UsageCounter[]
+  apiClients             APIClient[]
+  deviceRegistrations    DeviceRegistration[]
 
   @@index([organizationId])
   @@map("applications")
@@ -1269,6 +1374,11 @@ model EntitlementDefinition {
   updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
 
+  entitlementGrants EntitlementGrant[]
+  featureAccess     FeatureAccess[]
+  usageLimits       UsageLimit[]
+  usageCounters     UsageCounter[]
+
   @@unique([applicationId, key])
   @@map("entitlement_definitions")
 }
@@ -1361,6 +1471,9 @@ model Subscription {
   checkoutSessions    PaymentCheckoutSession[]
   paymentTransactions PaymentTransaction[]
   paymentInvoices     PaymentInvoice[]
+  entitlementGrants   EntitlementGrant[]
+  licenses            License[]
+  usageCounters       UsageCounter[]
 
   @@index([organizationId])
   @@index([customerId])
@@ -1611,4 +1724,406 @@ model UsageRecord {
   @@index([subscriptionId])
   @@index([featureId])
   @@map("usage_records")
+}
+
+// =====================================================================
+// Entitlement & License Engine (Phase 6) - the runtime authorization
+// layer. Consumes Subscription Engine state (Phase 4) and the
+// Feature/EntitlementDefinition catalog; grants nothing to and reads
+// nothing from the Payment Provider Framework (Phase 5, built in
+// parallel - deliberately not referenced anywhere in this schema).
+//
+// The spec's "Entitlement" catalog model is fulfilled by the existing
+// EntitlementDefinition (Phase 4) rather than a duplicate model - its
+// docstring already describes it as exactly that: "the stable,
+// application-scoped key that client SDKs will check at runtime once
+// Phase 6 implements entitlement enforcement."
+// =====================================================================
+
+/// A materialized grant of one EntitlementDefinition to an
+/// organization/application pair, resolved from an active Subscription (or
+/// created manually/promotionally/via trial). FeatureAccess is the fast-path
+/// read cache computed from the currently-active grant; this table is the
+/// source of truth and full history (superseded rows are revoked, never
+/// deleted or mutated in place).
+model EntitlementGrant {
+  id                      String                @id @default(uuid())
+  entitlementDefinitionId String
+  entitlementDefinition   EntitlementDefinition @relation(fields: [entitlementDefinitionId], references: [id], onDelete: Cascade)
+  organizationId          String
+  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId           String
+  application             Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  subscriptionId          String?
+  subscription            Subscription?         @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  source EntitlementGrantSource
+  status EntitlementGrantStatus @default(ACTIVE)
+
+  boolValue   Boolean?
+  numberValue Int?
+  textValue   String?
+  isUnlimited Boolean  @default(false)
+
+  validFrom     DateTime  @default(now())
+  validUntil    DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  idempotencyKey String? @unique
+  metadata       Json?
+  version        Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events EntitlementGrantEvent[]
+
+  @@index([organizationId, applicationId])
+  @@index([entitlementDefinitionId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("entitlement_grants")
+}
+
+/// Immutable, append-only log of every EntitlementGrant lifecycle
+/// transition (created, revoked, expired, superseded) - the same pattern
+/// SubscriptionEvent uses for the same reason: an auditable, never-mutated
+/// history independent of the grant's current-state row.
+model EntitlementGrantEvent {
+  id      String           @id @default(uuid())
+  grantId String
+  grant   EntitlementGrant @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  type     String
+  metadata Json?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([grantId])
+  @@map("entitlement_grant_events")
+}
+
+/// Denormalized, single-row-per-key fast-path read cache: exactly what
+/// `hasEntitlement()` reads at request time (one indexed lookup, no joins
+/// through Subscription -> Plan -> PlanFeature -> EntitlementGrant). Rebuilt
+/// whenever the underlying EntitlementGrant changes; `sourceGrantId` points
+/// back to the grant it was computed from for traceability.
+model FeatureAccess {
+  id                      String                @id @default(uuid())
+  organizationId          String
+  organization            Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId           String
+  application             Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  entitlementDefinitionId String
+  entitlementDefinition   EntitlementDefinition @relation(fields: [entitlementDefinitionId], references: [id], onDelete: Cascade)
+
+  hasAccess   Boolean
+  numberValue Int?
+  textValue   String?
+  isUnlimited Boolean @default(false)
+
+  sourceGrantId String?
+  computedAt    DateTime @default(now())
+
+  @@unique([organizationId, applicationId, entitlementDefinitionId])
+  @@index([applicationId])
+  @@map("feature_access")
+}
+
+/// A license grant - individual, seat-based, device-based, lifetime,
+/// trial, enterprise, temporary, or manually issued. `subscriptionId` is
+/// set when the license is derived from a Subscription Engine subscription;
+/// standalone licenses (e.g. a manually-issued lifetime license) leave it null.
+model License {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String
+  application    Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  type   LicenseType
+  status LicenseStatus @default(ACTIVE)
+
+  seatLimit   Int?
+  deviceLimit Int?
+
+  issuedAt  DateTime  @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+  metadata  Json?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments         LicenseAssignment[]
+  seats               Seat[]
+  licenseKeys         LicenseKey[]
+  deviceRegistrations DeviceRegistration[]
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("licenses")
+}
+
+/// Assigns an INDIVIDUAL-type License directly to a User (no seat
+/// indirection needed for single-user licenses).
+model LicenseAssignment {
+  id        String  @id @default(uuid())
+  licenseId String
+  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+
+  @@unique([licenseId, userId])
+  @@index([userId])
+  @@map("license_assignments")
+}
+
+/// One purchased seat slot under a SEAT-type License. `Seat` is the slot
+/// itself; `SeatAssignment` is the append-only history of who has occupied
+/// it - a transfer creates a new SeatAssignment rather than mutating the
+/// old one, so seat history is always reconstructable.
+model Seat {
+  id        String  @id @default(uuid())
+  licenseId String
+  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  status SeatStatus @default(AVAILABLE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments SeatAssignment[]
+
+  @@index([licenseId])
+  @@index([status])
+  @@map("seats")
+}
+
+model SeatAssignment {
+  id     String @id @default(uuid())
+  seatId String
+  seat   Seat   @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status SeatAssignmentStatus @default(PENDING)
+
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([seatId])
+  @@index([userId])
+  @@map("seat_assignments")
+}
+
+/// The current, resolved ceiling for a (organization, application,
+/// entitlement) quota - denormalized from the active EntitlementGrant's
+/// `numberValue` for fast lookup, same rationale as FeatureAccess.
+model UsageLimit {
+  id                      String                @id @default(uuid())
+  organizationId          String
+  applicationId           String
+  application             Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  entitlementDefinitionId String
+  entitlementDefinition   EntitlementDefinition @relation(fields: [entitlementDefinitionId], references: [id], onDelete: Cascade)
+
+  limitValue  Int?
+  isUnlimited Boolean          @default(false)
+  resetPolicy UsageResetPolicy @default(NEVER)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, applicationId, entitlementDefinitionId])
+  @@map("usage_limits")
+}
+
+/// The running counter enforced against UsageLimit. Distinct from Phase
+/// 4's `UsageRecord` (an append-only per-event billing/metering log): this
+/// is a single mutable row per (scope, entitlement) optimized for
+/// increment/decrement checks on every request, not an audit trail.
+model UsageCounter {
+  id                      String                @id @default(uuid())
+  organizationId          String
+  applicationId           String
+  application             Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  entitlementDefinitionId String
+  entitlementDefinition   EntitlementDefinition @relation(fields: [entitlementDefinitionId], references: [id], onDelete: Cascade)
+  subscriptionId          String?
+  subscription            Subscription?         @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  value       Int       @default(0)
+  periodStart DateTime  @default(now())
+  periodEnd   DateTime?
+  lastResetAt DateTime  @default(now())
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, applicationId, entitlementDefinitionId])
+  @@index([subscriptionId])
+  @@map("usage_counters")
+}
+
+/// A named integration/consumer that owns one or more APIKeys. Organization-
+/// and optionally application-scoped, per the "API Access" entitlement.
+model APIClient {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  name        String
+  description String?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys APIKey[]
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("api_clients")
+}
+
+/// A generated API credential. Only `keyHash` (SHA-256) is ever persisted -
+/// the same one-way-hash pattern already used for refresh/verification/
+/// reset tokens in the auth module; the plaintext key is shown exactly
+/// once, at creation, and is never recoverable afterward.
+model APIKey {
+  id          String    @id @default(uuid())
+  apiClientId String
+  apiClient   APIClient @relation(fields: [apiClientId], references: [id], onDelete: Cascade)
+
+  name            String
+  keyPrefix       String
+  keyHash         String    @unique
+  lastFour        String
+  rateLimitPerMin Int?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  rotatedAt       DateTime?
+  lastUsedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scopes APIKeyScope[]
+
+  @@index([apiClientId])
+  @@map("api_keys")
+}
+
+model APIKeyScope {
+  id       String @id @default(uuid())
+  apiKeyId String
+  apiKey   APIKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  scope    String
+
+  createdAt DateTime @default(now())
+
+  @@unique([apiKeyId, scope])
+  @@map("api_key_scopes")
+}
+
+/// A human-readable, offline-activatable license key. Hashed the same way
+/// as APIKey (SHA-256, shown once); `displayCode` retains a masked hint
+/// (e.g. "SSZP-****-****-9F2A") for support/admin display without ever
+/// storing or returning the full plaintext key.
+model LicenseKey {
+  id        String  @id @default(uuid())
+  licenseId String
+  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  keyHash         String        @unique
+  displayCode     String
+  activationLimit Int           @default(1)
+  activationCount Int           @default(0)
+  status          LicenseStatus @default(ACTIVE)
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  transferredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([licenseId])
+  @@map("license_keys")
+}
+
+/// A device that has activated against a License (device-limited licenses)
+/// or is simply registered under an application/user for entitlement
+/// checks (push notifications, session hygiene, "sign out other devices").
+model DeviceRegistration {
+  id             String        @id @default(uuid())
+  applicationId  String
+  application    Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  licenseId      String?
+  license        License?      @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+
+  deviceId   String
+  platform   DevicePlatform
+  status     DeviceStatus   @default(ACTIVE)
+  appVersion String?
+  osVersion  String?
+  pushToken  String?
+  lastSeenAt DateTime       @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, deviceId])
+  @@index([userId])
+  @@index([licenseId])
+  @@map("device_registrations")
+}
+
+/// Security-relevant access events - API key auth attempts, license/device
+/// activations, seat assignment changes. Deliberately NOT a row per routine
+/// `hasEntitlement()` check (that would defeat the "millions of users,
+/// minimize database queries" requirement); structural entitlement changes
+/// already go through the shared AuditLog like every other phase. Plain
+/// (non-relational) id columns by design - a high-write-volume log
+/// shouldn't carry FK constraint overhead on its hot insert path.
+model AccessLog {
+  id                      String  @id @default(uuid())
+  organizationId          String?
+  applicationId           String?
+  userId                  String?
+  apiKeyId                String?
+  entitlementDefinitionId String?
+
+  action   String
+  allowed  Boolean
+  reason   String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([apiKeyId])
+  @@map("access_logs")
 }
