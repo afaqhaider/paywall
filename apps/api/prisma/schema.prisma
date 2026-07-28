@@ -25,6 +25,7 @@ enum OrganizationRole {
 enum ApplicationMemberRole {
   OWNER
   ADMINISTRATOR
+  MAINTAINER
   DEVELOPER
   TESTER
   SUPPORT
@@ -45,6 +46,7 @@ enum ApplicationEnvironmentType {
   DEVELOPMENT
   STAGING
   PRODUCTION
+  SANDBOX
 }
 
 enum ApplicationSecretType {
@@ -384,6 +386,31 @@ enum AuditAction {
   DEVICE_REGISTERED
   DEVICE_REVOKED
   USAGE_LIMIT_UPDATED
+  DEVELOPER_PROFILE_UPDATED
+  DEVELOPER_INVITATION_CREATED
+  DEVELOPER_INVITATION_ACCEPTED
+  DEVELOPER_INVITATION_REVOKED
+  DEVELOPER_INVITATION_RESENT
+  ENVIRONMENT_VARIABLE_SET
+  ENVIRONMENT_VARIABLE_REMOVED
+  ALLOWED_ORIGIN_ADDED
+  ALLOWED_ORIGIN_REMOVED
+  OAUTH_APPLICATION_CREATED
+  OAUTH_APPLICATION_DELETED
+  OAUTH_CREDENTIAL_CREATED
+  OAUTH_CREDENTIAL_ROTATED
+  OAUTH_CREDENTIAL_REVOKED
+  REDIRECT_URI_ADDED
+  REDIRECT_URI_REMOVED
+  CALLBACK_URL_ADDED
+  CALLBACK_URL_REMOVED
+  WEBHOOK_ENDPOINT_CREATED
+  WEBHOOK_ENDPOINT_UPDATED
+  WEBHOOK_ENDPOINT_DISABLED
+  WEBHOOK_ENDPOINT_ENABLED
+  WEBHOOK_ENDPOINT_DELETED
+  WEBHOOK_SECRET_ROTATED
+  WEBHOOK_DELIVERY_RETRIED
 }
 
 // ---------------------------------------------------------------------------
@@ -887,29 +914,35 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions                   Session[]
-  emailVerificationTokens    EmailVerificationToken[]
-  passwordResetTokens        PasswordResetToken[]
-  organizationMemberships    OrganizationMember[]
-  auditLogs                  AuditLog[]
-  applicationMemberships     ApplicationMember[]
-  createdApplications        Application[]
-  createdApplicationVersions ApplicationVersion[]
-  createdApplicationSecrets  ApplicationSecret[]
-  createdProducts            Product[]
-  createdCoupons             Coupon[]
-  createdSubscriptionChanges SubscriptionChange[]
-  subscriptionEvents         SubscriptionEvent[]
-  customers                  Customer[]
-  createdPaymentProviders    PaymentProvider[]
-  createdProviderCredentials ProviderCredential[]
-  createdPaymentRefunds      PaymentRefund[]
-  createdLicenses            License[]
-  licenseAssignments         LicenseAssignment[]
-  seatAssignments            SeatAssignment[]
-  createdApiClients          APIClient[]
-  deviceRegistrations        DeviceRegistration[]
-  entitlementGrantEvents     EntitlementGrantEvent[]
+  sessions                     Session[]
+  emailVerificationTokens      EmailVerificationToken[]
+  passwordResetTokens          PasswordResetToken[]
+  organizationMemberships      OrganizationMember[]
+  auditLogs                    AuditLog[]
+  applicationMemberships       ApplicationMember[]
+  createdApplications          Application[]
+  createdApplicationVersions   ApplicationVersion[]
+  createdApplicationSecrets    ApplicationSecret[]
+  createdProducts              Product[]
+  createdCoupons               Coupon[]
+  createdSubscriptionChanges   SubscriptionChange[]
+  subscriptionEvents           SubscriptionEvent[]
+  customers                    Customer[]
+  createdPaymentProviders      PaymentProvider[]
+  createdProviderCredentials   ProviderCredential[]
+  createdPaymentRefunds        PaymentRefund[]
+  createdLicenses              License[]
+  licenseAssignments           LicenseAssignment[]
+  seatAssignments              SeatAssignment[]
+  createdApiClients            APIClient[]
+  deviceRegistrations          DeviceRegistration[]
+  entitlementGrantEvents       EntitlementGrantEvent[]
+  developerProfile             DeveloperProfile?
+  sentDeveloperInvitations     DeveloperInvitation[]    @relation("DeveloperInvitationsSent")
+  acceptedDeveloperInvitations DeveloperInvitation[]    @relation("DeveloperInvitationsAccepted")
+  createdEnvironmentVariables  EnvironmentVariable[]
+  createdOAuthApplications     OAuthApplication[]
+  createdWebhookEndpoints      WebhookEndpoint[]
 
   @@map("users")
 }
@@ -1067,6 +1100,10 @@ model Application {
   usageCounters          UsageCounter[]
   apiClients             APIClient[]
   deviceRegistrations    DeviceRegistration[]
+  invitations            DeveloperInvitation[]
+  allowedOrigins         AllowedOrigin[]
+  oauthApplications      OAuthApplication[]
+  webhookEndpoints       WebhookEndpoint[]
 
   @@index([organizationId])
   @@map("applications")
@@ -1116,7 +1153,10 @@ model ApplicationEnvironment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  secrets ApplicationSecret[]
+  secrets              ApplicationSecret[]
+  environmentVariables EnvironmentVariable[]
+  allowedOrigins       AllowedOrigin[]
+  webhookEndpoints     WebhookEndpoint[]
 
   @@unique([applicationId, type])
   @@map("application_environments")
@@ -2126,4 +2166,296 @@ model AccessLog {
   @@index([applicationId])
   @@index([apiKeyId])
   @@map("access_logs")
+}
+
+// =====================================================================
+// Phase 7: Developer Portal
+// The public-facing surface application developers use to self-serve:
+// register apps (App Registry, Phase 3, already covers create/archive/
+// restore/environments/secrets/domains/members - reused as-is here),
+// generate API keys (Phase 6's APIClient/APIKey - reused as-is), issue
+// OAuth credentials, configure outbound webhooks, invite teammates, read
+// usage analytics, and browse API docs. `DeveloperAuditLog` is
+// deliberately NOT a new model - every write below goes through the same
+// shared AuditLog/AuditAction already used by every other phase.
+// =====================================================================
+
+enum DeveloperInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum WebhookEndpointStatus {
+  ENABLED
+  DISABLED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  RETRYING
+  EXHAUSTED
+}
+
+/// Extra developer-facing profile fields layered on top of `User` (which
+/// stays identity-only). One-to-one, created lazily on first edit.
+model DeveloperProfile {
+  id           String  @id @default(uuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio          String?
+  companyName  String?
+  websiteUrl   String?
+  githubUrl    String?
+  supportEmail String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("developer_profiles")
+}
+
+/// Email-based invitation onto an Application's team (`ApplicationMember`
+/// on accept). Token is hashed the same way as every other one-shot token
+/// in this codebase (EmailVerificationToken, PasswordResetToken) - the
+/// plaintext is only ever in the invite link, never persisted.
+model DeveloperInvitation {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  email     String
+  role      ApplicationMemberRole     @default(DEVELOPER)
+  tokenHash String                    @unique
+  status    DeveloperInvitationStatus @default(PENDING)
+
+  invitedById String
+  invitedBy   User   @relation("DeveloperInvitationsSent", fields: [invitedById], references: [id])
+
+  acceptedById String?
+  acceptedBy   User?   @relation("DeveloperInvitationsAccepted", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([applicationId])
+  @@index([email])
+  @@map("developer_invitations")
+}
+
+/// Normalized, non-secret application configuration (build flags, base
+/// URLs, feature toggles). Distinct from `ApplicationSecret`, which is
+/// reserved for values that must be encrypted at rest - `isSecret` is a
+/// display hint only (guides the web UI to mask the value), never a
+/// storage decision; genuinely sensitive values belong in ApplicationSecret.
+model EnvironmentVariable {
+  id            String                 @id @default(uuid())
+  environmentId String
+  environment   ApplicationEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  key      String
+  value    String
+  isSecret Boolean @default(false)
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([environmentId, key])
+  @@map("environment_variables")
+}
+
+/// CORS allow-list for browser-based SDK calls. Optionally scoped to one
+/// environment; a null `environmentId` allows the origin across every
+/// environment of the application.
+model AllowedOrigin {
+  id            String                  @id @default(uuid())
+  applicationId String
+  application   Application             @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  environmentId String?
+  environment   ApplicationEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+
+  origin String
+
+  createdAt DateTime @default(now())
+
+  @@unique([applicationId, environmentId, origin])
+  @@index([applicationId])
+  @@map("allowed_origins")
+}
+
+/// One OAuth client registration per (application, purpose) - e.g. "Web
+/// login", "Server-to-server integration". Holds many rotatable
+/// `OAuthCredential`s the same way `APIClient` holds many `APIKey`s.
+model OAuthApplication {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  name String
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  credentials  OAuthCredential[]
+  redirectUris RedirectURI[]
+  callbackUrls CallbackURL[]
+
+  @@index([applicationId])
+  @@map("oauth_applications")
+}
+
+/// Unlike APIKey/LicenseKey (one-way hashed), an OAuth client secret must
+/// be verified by exact comparison during token exchange, so it is
+/// reversibly encrypted (AES-256-GCM, same `encryption.util.ts` helper as
+/// ApplicationSecret) rather than hashed.
+model OAuthCredential {
+  id                 String           @id @default(uuid())
+  oauthApplicationId String
+  oauthApplication   OAuthApplication @relation(fields: [oauthApplicationId], references: [id], onDelete: Cascade)
+
+  clientId       String @unique
+  encryptedValue String
+  iv             String
+  authTag        String
+  lastFour       String
+
+  rotatedAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([oauthApplicationId])
+  @@map("oauth_credentials")
+}
+
+/// Allow-listed `redirect_uri` values for the OAuth authorization-code
+/// flow - the authorization endpoint rejects any request whose
+/// redirect_uri isn't in this list.
+model RedirectURI {
+  id                 String           @id @default(uuid())
+  oauthApplicationId String
+  oauthApplication   OAuthApplication @relation(fields: [oauthApplicationId], references: [id], onDelete: Cascade)
+
+  uri String
+
+  createdAt DateTime @default(now())
+
+  @@unique([oauthApplicationId, uri])
+  @@map("redirect_uris")
+}
+
+/// Non-web callback targets (native deep links, e.g. `myapp://auth-callback`)
+/// for mobile OAuth flows - kept separate from RedirectURI because these
+/// are validated with custom-scheme rules instead of the strict https
+/// matching redirect_uri gets.
+model CallbackURL {
+  id                 String           @id @default(uuid())
+  oauthApplicationId String
+  oauthApplication   OAuthApplication @relation(fields: [oauthApplicationId], references: [id], onDelete: Cascade)
+
+  url String
+
+  createdAt DateTime @default(now())
+
+  @@unique([oauthApplicationId, url])
+  @@map("callback_urls")
+}
+
+/// A developer-configured target the platform delivers events to
+/// (entitlement/subscription/payment/license lifecycle events). Delivery
+/// is asynchronous - creating/updating the endpoint just changes
+/// configuration; `WebhookDelivery` rows track the actual send attempts.
+model WebhookEndpoint {
+  id            String                  @id @default(uuid())
+  applicationId String
+  application   Application             @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  environmentId String?
+  environment   ApplicationEnvironment? @relation(fields: [environmentId], references: [id], onDelete: SetNull)
+
+  url         String
+  description String?
+  eventTypes  String[]
+  status      WebhookEndpointStatus @default(ENABLED)
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  secrets    WebhookSecret[]
+  deliveries WebhookDelivery[]
+
+  @@index([applicationId])
+  @@map("webhook_endpoints")
+}
+
+/// HMAC signing secret for a WebhookEndpoint's payloads. Rotating creates
+/// a new active row and deactivates (does not delete) the previous one,
+/// so in-flight deliveries signed with the old secret can still be
+/// verified during the rollover window.
+model WebhookSecret {
+  id                String          @id @default(uuid())
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  encryptedValue String
+  iv             String
+  authTag        String
+  lastFour       String
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  rotatedAt DateTime?
+
+  @@index([webhookEndpointId])
+  @@map("webhook_secrets")
+}
+
+/// One row per event delivery attempt series. `attemptCount` and
+/// `nextAttemptAt` drive the retry loop; individual attempt outcomes are
+/// recorded in `WebhookRetry` for the delivery history / payload viewer UI.
+model WebhookDelivery {
+  id                String          @id @default(uuid())
+  webhookEndpointId String
+  webhookEndpoint   WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  eventType      String
+  payload        Json
+  status         WebhookDeliveryStatus @default(PENDING)
+  responseStatus Int?
+  responseBody   String?
+  attemptCount   Int                   @default(0)
+  nextAttemptAt  DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deliveredAt DateTime?
+
+  retries WebhookRetry[]
+
+  @@index([webhookEndpointId])
+  @@index([webhookEndpointId, status])
+  @@map("webhook_deliveries")
+}
+
+model WebhookRetry {
+  id                String          @id @default(uuid())
+  webhookDeliveryId String
+  webhookDelivery   WebhookDelivery @relation(fields: [webhookDeliveryId], references: [id], onDelete: Cascade)
+
+  attemptNumber  Int
+  responseStatus Int?
+  error          String?
+  executedAt     DateTime @default(now())
+
+  @@index([webhookDeliveryId])
+  @@map("webhook_retries")
 }
