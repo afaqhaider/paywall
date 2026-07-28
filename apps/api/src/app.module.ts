@@ -24,6 +24,8 @@ import { TrialsModule } from "./trials/trials.module";
 import { UsageModule } from "./usage/usage.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { EntitlementsModule } from "./entitlements/entitlements.module";
+import { LicensesModule } from "./licenses/licenses.module";
+import { SeatsModule } from "./seats/seats.module";
 
 @Module({
   imports: [
@@ -74,6 +76,8 @@ import { EntitlementsModule } from "./entitlements/entitlements.module";
     UsageModule,
     PaymentsModule,
     EntitlementsModule,
+    LicensesModule,
+    SeatsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
