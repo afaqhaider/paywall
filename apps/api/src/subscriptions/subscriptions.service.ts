@@ -689,6 +689,45 @@ export class SubscriptionsService {
     }));
   }
 
+  /**
+   * Phase 9 admin-only capability: directly extends `Subscription.trialEnd`
+   * (and the linked `Trial.endsAt`, if a `Trial` row exists for this
+   * subscription) without going through the normal TRIALING -> ACTIVE
+   * transition machinery - there is no lifecycle event for "the trial got
+   * longer", just a later deadline. Only valid while the subscription is
+   * still TRIALING. No dedicated `SubscriptionEventType` exists in the
+   * (frozen) schema for "trial extended", so this intentionally does not
+   * write a `SubscriptionEvent` row, matching `activate`/`renew`/etc.'s
+   * `runTransition` shape rather than `cancel`/`create`'s self-auditing
+   * shape - the Phase 9 admin surface calling this records its own audit
+   * trail via `AuditAction.SUBSCRIPTION_ADMIN_ACTION`.
+   */
+  async extendTrial(
+    subscriptionId: string,
+    _userId: string,
+    newTrialEnd: Date,
+    _meta: RequestMeta,
+  ): Promise<Subscription> {
+    const subscription = await this.getOwnedById(subscriptionId);
+    if (subscription.status !== "TRIALING") {
+      throw new ConflictException("Only a TRIALING subscription's trial can be extended");
+    }
+
+    const trial = await this.prisma.trial.findUnique({ where: { subscriptionId } });
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.subscription.update({
+        where: { id: subscriptionId },
+        data: { trialEnd: newTrialEnd, version: { increment: 1 } },
+      }),
+      ...(trial
+        ? [this.prisma.trial.update({ where: { id: trial.id }, data: { endsAt: newTrialEnd } })]
+        : []),
+    ]);
+
+    return updated;
+  }
+
   // ---- internals ----
 
   private async getOwned(subscriptionId: string, organizationId: string): Promise<Subscription> {

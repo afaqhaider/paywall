@@ -43,6 +43,12 @@ import { FinancialEventsModule } from "./financial-events/financial-events.modul
 import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
 import { TwoFactorModule } from "./two-factor/two-factor.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { AdminSubscriptionsModule } from "./admin-subscriptions/admin-subscriptions.module";
+import { AdminLicensesModule } from "./admin-licenses/admin-licenses.module";
+import { AdminFinancialModule } from "./admin-financial/admin-financial.module";
+import { AdminMonitoringModule } from "./admin-monitoring/admin-monitoring.module";
+import { AdminFraudModule } from "./admin-fraud/admin-fraud.module";
+import { AdminConfigModule } from "./admin-config/admin-config.module";
 
 @Module({
   imports: [
@@ -112,6 +118,13 @@ import { NotificationsModule } from "./notifications/notifications.module";
     CustomerPortalModule,
     TwoFactorModule,
     NotificationsModule,
+    // Phase 9: Platform Administration & Operations Center
+    AdminSubscriptionsModule,
+    AdminLicensesModule,
+    AdminFinancialModule,
+    AdminMonitoringModule,
+    AdminFraudModule,
+    AdminConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

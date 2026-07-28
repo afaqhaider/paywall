@@ -18,6 +18,7 @@ import type { CursorQueryDto } from "../common/dto/cursor-query.dto";
 import type { CreateLicenseDto } from "./dto/create-license.dto";
 import type { UpdateLicenseDto } from "./dto/update-license.dto";
 import type { AssignLicenseDto } from "./dto/assign-license.dto";
+import type { TransferLicenseDto } from "./dto/transfer-license.dto";
 
 @Injectable()
 export class LicensesService {
@@ -238,6 +239,79 @@ export class LicensesService {
     });
 
     return updated;
+  }
+
+  /**
+   * Phase 9 admin capability: reassigns an INDIVIDUAL-type license's active
+   * assignment from whoever currently holds it to a new user. No transfer
+   * method existed on this service before this phase - mirrors
+   * `SeatsService.transfer()`'s pattern exactly: the currently-active
+   * `LicenseAssignment` is closed out (`unassignedAt` set, never deleted, so
+   * assignment history stays fully reconstructable) and a new/reactivated
+   * row is opened for the target user in the same transaction. Unlike seats
+   * (which always insert a fresh row per transfer), `LicenseAssignment` has
+   * a `[licenseId, userId]` unique constraint that must survive *forever*,
+   * not just while active - so if the target user already has a (now
+   * inactive) row on this license from a previous assignment, this
+   * reactivates it instead of inserting a duplicate, the same
+   * insert-or-reactivate logic `assign()` already uses.
+   */
+  async transfer(
+    licenseId: string,
+    organizationId: string,
+    actingUserId: string,
+    dto: TransferLicenseDto,
+    meta: RequestMeta,
+  ) {
+    const license = await this.getOwned(licenseId, organizationId);
+
+    if (license.type !== LicenseType.INDIVIDUAL) {
+      throw new BadRequestException("Only INDIVIDUAL-type licenses support transfer");
+    }
+
+    const current = await this.prisma.licenseAssignment.findFirst({
+      where: { licenseId, unassignedAt: null },
+    });
+    if (!current) {
+      throw new NotFoundException("License has no active assignment to transfer");
+    }
+    if (current.userId === dto.toUserId) {
+      throw new ConflictException("License is already assigned to this user");
+    }
+
+    const existingTarget = await this.prisma.licenseAssignment.findUnique({
+      where: { licenseId_userId: { licenseId, userId: dto.toUserId } },
+    });
+
+    const [, newAssignment] = await this.prisma.$transaction([
+      this.prisma.licenseAssignment.update({
+        where: { id: current.id },
+        data: { unassignedAt: new Date() },
+      }),
+      existingTarget
+        ? this.prisma.licenseAssignment.update({
+            where: { id: existingTarget.id },
+            data: { assignedAt: new Date(), unassignedAt: null },
+          })
+        : this.prisma.licenseAssignment.create({
+            data: { licenseId, userId: dto.toUserId },
+          }),
+    ]);
+
+    await this.auditService.record({
+      action: "LICENSE_UPDATED",
+      userId: actingUserId,
+      organizationId,
+      metadata: {
+        licenseId,
+        event: "license_transferred",
+        fromUserId: current.userId,
+        toUserId: dto.toUserId,
+      },
+      ...meta,
+    });
+
+    return newAssignment;
   }
 
   private async getOwned(licenseId: string, organizationId: string): Promise<License> {
