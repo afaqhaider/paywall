@@ -51,6 +51,12 @@ import { AdminSupportModule } from "./admin-support/admin-support.module";
 import { AdminDirectoryModule } from "./admin-directory/admin-directory.module";
 import { AdminAuditModule } from "./admin-audit/admin-audit.module";
 import { AdminReportsModule } from "./admin-reports/admin-reports.module";
+import { AdminSubscriptionsModule } from "./admin-subscriptions/admin-subscriptions.module";
+import { AdminLicensesModule } from "./admin-licenses/admin-licenses.module";
+import { AdminFinancialModule } from "./admin-financial/admin-financial.module";
+import { AdminMonitoringModule } from "./admin-monitoring/admin-monitoring.module";
+import { AdminFraudModule } from "./admin-fraud/admin-fraud.module";
+import { AdminConfigModule } from "./admin-config/admin-config.module";
 
 @Module({
   imports: [
@@ -128,6 +134,12 @@ import { AdminReportsModule } from "./admin-reports/admin-reports.module";
     AdminDirectoryModule,
     AdminAuditModule,
     AdminReportsModule,
+    AdminSubscriptionsModule,
+    AdminLicensesModule,
+    AdminFinancialModule,
+    AdminMonitoringModule,
+    AdminFraudModule,
+    AdminConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
