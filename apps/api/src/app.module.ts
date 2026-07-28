@@ -35,6 +35,8 @@ import { EnvironmentVariablesModule } from "./environment-variables/environment-
 import { AllowedOriginsModule } from "./allowed-origins/allowed-origins.module";
 import { OAuthModule } from "./oauth/oauth.module";
 import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
+import { SdkConfigModule } from "./sdk-config/sdk-config.module";
 
 @Module({
   imports: [
@@ -96,6 +98,8 @@ import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
     AllowedOriginsModule,
     OAuthModule,
     DeveloperWebhooksModule,
+    AnalyticsModule,
+    SdkConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

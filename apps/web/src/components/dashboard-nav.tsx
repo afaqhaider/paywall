@@ -55,6 +55,18 @@ export function DashboardNav({ children }: { children?: React.ReactNode }) {
           <Link href="/dashboard/devices" className="hover:text-slate-900">
             Devices
           </Link>
+          <Link href="/dashboard/webhooks" className="hover:text-slate-900">
+            Webhooks
+          </Link>
+          <Link href="/dashboard/oauth" className="hover:text-slate-900">
+            OAuth
+          </Link>
+          <Link href="/dashboard/analytics" className="hover:text-slate-900">
+            Analytics
+          </Link>
+          <Link href="/dashboard/api-docs" className="hover:text-slate-900">
+            API Docs
+          </Link>
           <Link href="/dashboard/payment-providers" className="hover:text-slate-900">
             Payment Providers
           </Link>
