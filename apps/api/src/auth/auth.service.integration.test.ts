@@ -5,7 +5,21 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
 import { AuditService } from "../audit/audit.service";
-import { AuthService } from "./auth.service";
+import { AuthService, type TokenPair } from "./auth.service";
+
+/**
+ * `AuthService.login()` now returns `TokenPair | TwoFactorChallenge` (Phase
+ * 8 adds an opt-in 2FA branch) - every account exercised by this suite has
+ * 2FA disabled (the default), so a successful login is always a `TokenPair`
+ * in practice. This just narrows the type for the assertions below without
+ * weakening them.
+ */
+function expectTokenPair(result: TokenPair | { twoFactorRequired: true }): TokenPair {
+  if (!("accessToken" in result)) {
+    throw new Error("Expected a TokenPair, got a two-factor challenge");
+  }
+  return result;
+}
 
 /**
  * Exercises the real register/login/refresh-rotation/reuse-detection flow
@@ -58,7 +72,9 @@ describe("AuthService (integration)", () => {
     const loginEmail = email("login");
     await authService.register({ email: loginEmail, password: "SuperSecret123!" }, meta);
 
-    const pair = await authService.login({ email: loginEmail, password: "SuperSecret123!" }, meta);
+    const pair = expectTokenPair(
+      await authService.login({ email: loginEmail, password: "SuperSecret123!" }, meta),
+    );
     expect(pair.accessToken).toBeTruthy();
     expect(pair.user.email).toBe(loginEmail);
 
@@ -76,7 +92,9 @@ describe("AuthService (integration)", () => {
   it("rotates refresh tokens and detects reuse of a rotated-out token", async () => {
     const loginEmail = email("rotate");
     await authService.register({ email: loginEmail, password: "SuperSecret123!" }, meta);
-    const first = await authService.login({ email: loginEmail, password: "SuperSecret123!" }, meta);
+    const first = expectTokenPair(
+      await authService.login({ email: loginEmail, password: "SuperSecret123!" }, meta),
+    );
 
     const rotated = await authService.refresh(first.refreshToken, meta);
     expect(rotated.refreshToken).not.toBe(first.refreshToken);
@@ -117,9 +135,8 @@ describe("AuthService (integration)", () => {
   it("resets a forgotten password and revokes existing sessions", async () => {
     const resetEmail = email("reset");
     await authService.register({ email: resetEmail, password: "OldPassword123!" }, meta);
-    const session = await authService.login(
-      { email: resetEmail, password: "OldPassword123!" },
-      meta,
+    const session = expectTokenPair(
+      await authService.login({ email: resetEmail, password: "OldPassword123!" }, meta),
     );
 
     await authService.forgotPassword(resetEmail, meta);
@@ -143,9 +160,8 @@ describe("AuthService (integration)", () => {
       authService.login({ email: resetEmail, password: "OldPassword123!" }, meta),
     ).rejects.toBeInstanceOf(UnauthorizedException);
 
-    const relogin = await authService.login(
-      { email: resetEmail, password: "BrandNewPassword123!" },
-      meta,
+    const relogin = expectTokenPair(
+      await authService.login({ email: resetEmail, password: "BrandNewPassword123!" }, meta),
     );
     expect(relogin.accessToken).toBeTruthy();
 

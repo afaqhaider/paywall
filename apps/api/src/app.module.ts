@@ -37,6 +37,12 @@ import { OAuthModule } from "./oauth/oauth.module";
 import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { SdkConfigModule } from "./sdk-config/sdk-config.module";
+import { FinancialIntegrationModule } from "./financial-integration/financial-integration.module";
+import { ErpConnectorModule } from "./erp-connector/erp-connector.module";
+import { FinancialEventsModule } from "./financial-events/financial-events.module";
+import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
+import { TwoFactorModule } from "./two-factor/two-factor.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -100,6 +106,12 @@ import { SdkConfigModule } from "./sdk-config/sdk-config.module";
     DeveloperWebhooksModule,
     AnalyticsModule,
     SdkConfigModule,
+    FinancialIntegrationModule,
+    ErpConnectorModule,
+    FinancialEventsModule,
+    CustomerPortalModule,
+    TwoFactorModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

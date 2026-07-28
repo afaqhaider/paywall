@@ -41,6 +41,14 @@ export interface TokenPair {
   user: PublicUser;
 }
 
+/** Returned by `login()` instead of a `TokenPair` when the account has 2FA
+ * enabled - the caller must complete `POST /auth/2fa/verify-login` with this
+ * short-lived challenge token before a session is actually issued. */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+}
+
 function toPublicUser(user: User): PublicUser {
   return {
     id: user.id,
@@ -150,7 +158,7 @@ export class AuthService {
     });
   }
 
-  async login(dto: LoginDto, meta: RequestMeta): Promise<TokenPair> {
+  async login(dto: LoginDto, meta: RequestMeta): Promise<TokenPair | TwoFactorChallenge> {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
 
     // Always run a hash comparison, even for an unknown email, so response
@@ -168,6 +176,17 @@ export class AuthService {
         ...meta,
       });
       throw new UnauthorizedException("Invalid email or password");
+    }
+
+    const twoFactor = await this.prisma.twoFactorCredential.findUnique({
+      where: { userId: user.id },
+    });
+    if (twoFactor && twoFactor.enabled) {
+      const challengeToken = await this.jwtService.signAsync(
+        { sub: user.id, purpose: "2fa_challenge" },
+        { expiresIn: "5m" },
+      );
+      return { twoFactorRequired: true, challengeToken };
     }
 
     const pair = await this.issueTokenPair(user, meta, {
