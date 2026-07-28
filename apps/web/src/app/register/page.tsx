@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Alert, Button, Input, Label } from "@paywall/ui";
 import { AuthCard } from "../../components/auth-card";
+import { GoogleSignInButton } from "../../components/google-signin-button";
 import { ApiError } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -99,6 +100,12 @@ export default function RegisterPage() {
         <Button type="submit" disabled={submitting} className="w-full">
           {submitting ? "Creating account..." : "Create account"}
         </Button>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <div className="h-px flex-1 bg-slate-200" />
+          or
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+        <GoogleSignInButton label="Sign up with Google" />
         <p className="text-center text-sm text-slate-500">
           Already have an account?{" "}
           <Link href="/login" className="font-medium text-slate-900 underline">

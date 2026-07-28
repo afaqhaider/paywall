@@ -11,9 +11,12 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
+import { GoogleConfiguredGuard, type GoogleProfile } from "./strategies/google.strategy";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
@@ -45,7 +48,35 @@ function respondWithTokenPair(res: Response, pair: TokenPair) {
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Public()
+  @Get("google")
+  @UseGuards(GoogleConfiguredGuard, AuthGuard("google"))
+  async googleAuth(): Promise<void> {
+    // GoogleConfiguredGuard rejects cleanly if unconfigured; otherwise
+    // AuthGuard("google") intercepts the request and redirects to Google
+    // before this body ever runs.
+  }
+
+  @Public()
+  @Get("google/callback")
+  @UseGuards(GoogleConfiguredGuard, AuthGuard("google"))
+  async googleCallback(
+    @Req() req: Request & { user: GoogleProfile },
+    @Res() res: Response,
+  ): Promise<void> {
+    const pair = await this.authService.loginWithGoogle(req.user, extractRequestMeta(req));
+    setRefreshCookies(res, pair.refreshToken, {
+      maxAgeMs: pair.refreshTokenExpiresAt.getTime() - Date.now(),
+    });
+
+    const webOrigin = this.configService.get<string>("WEB_ORIGIN", "http://localhost:3000");
+    res.redirect(`${webOrigin}/dashboard`);
+  }
 
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })

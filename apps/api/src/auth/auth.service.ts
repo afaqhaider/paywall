@@ -21,6 +21,7 @@ import {
 } from "./auth.constants";
 import type { RegisterDto } from "./dto/register.dto";
 import type { LoginDto } from "./dto/login.dto";
+import type { GoogleProfile } from "./strategies/google.strategy";
 
 export interface PublicUser {
   id: string;
@@ -179,6 +180,63 @@ export class AuthService {
       userId: user.id,
       ...meta,
     });
+
+    return pair;
+  }
+
+  /**
+   * Finds-or-creates a User for a verified Google identity. Auto-links by
+   * email if an existing password account matches - Google has already
+   * verified that email, so this is the accepted trade-off (documented at
+   * the point this feature was requested): whoever controls that Google
+   * account gets in, without ever knowing the original password.
+   */
+  async loginWithGoogle(profile: GoogleProfile, meta: RequestMeta): Promise<TokenPair> {
+    let user = await this.prisma.user.findUnique({ where: { googleId: profile.googleId } });
+
+    if (!user) {
+      const existingByEmail = await this.prisma.user.findUnique({
+        where: { email: profile.email },
+      });
+
+      if (existingByEmail) {
+        user = await this.prisma.user.update({
+          where: { id: existingByEmail.id },
+          data: {
+            googleId: profile.googleId,
+            emailVerified: existingByEmail.emailVerified || profile.emailVerified,
+            emailVerifiedAt:
+              existingByEmail.emailVerifiedAt ?? (profile.emailVerified ? new Date() : undefined),
+            avatarUrl: existingByEmail.avatarUrl ?? profile.avatarUrl,
+          },
+        });
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            email: profile.email,
+            googleId: profile.googleId,
+            emailVerified: profile.emailVerified,
+            emailVerifiedAt: profile.emailVerified ? new Date() : undefined,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            displayName: profile.firstName
+              ? `${profile.firstName} ${profile.lastName ?? ""}`.trim()
+              : undefined,
+            avatarUrl: profile.avatarUrl,
+          },
+        });
+
+        await this.auditService.record({ action: "USER_REGISTERED", userId: user.id, ...meta });
+      }
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException("This account has been deactivated");
+    }
+
+    const pair = await this.issueTokenPair(user, meta, { rememberMe: true });
+
+    await this.auditService.record({ action: "LOGIN_SUCCEEDED", userId: user.id, ...meta });
 
     return pair;
   }
@@ -384,7 +442,7 @@ export class AuthService {
     meta: RequestMeta,
   ): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const matches = await verifyPassword(currentPassword, user.passwordHash);
+    const matches = await verifyPassword(currentPassword, user.passwordHash ?? DUMMY_PASSWORD_HASH);
 
     if (!matches) {
       throw new BadRequestException("Current password is incorrect");

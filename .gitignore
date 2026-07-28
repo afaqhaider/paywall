@@ -16,6 +16,10 @@ out/
 .env.*.local
 !.env.example
 
+# OAuth client secrets downloaded from provider consoles - never commit these
+client_secret*.json
+google-services*.json
+
 # Logs
 *.log
 npm-debug.log*

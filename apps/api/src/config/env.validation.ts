@@ -52,6 +52,18 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNotEmpty()
   PLATFORM_VERSION?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  GOOGLE_CLIENT_ID?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  GOOGLE_CLIENT_SECRET?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  GOOGLE_CALLBACK_URL?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

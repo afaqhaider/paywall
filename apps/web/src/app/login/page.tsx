@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Alert, Button, Input, Label } from "@paywall/ui";
 import { AuthCard } from "../../components/auth-card";
+import { GoogleSignInButton } from "../../components/google-signin-button";
 import { ApiError } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -74,6 +75,12 @@ export default function LoginPage() {
         <Button type="submit" disabled={submitting} className="w-full">
           {submitting ? "Logging in..." : "Log in"}
         </Button>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <div className="h-px flex-1 bg-slate-200" />
+          or
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+        <GoogleSignInButton />
         <p className="text-center text-sm text-slate-500">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="font-medium text-slate-900 underline">
