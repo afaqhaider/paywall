@@ -28,6 +28,18 @@ export function DashboardNav({ children }: { children?: React.ReactNode }) {
           <Link href="/dashboard/apps" className="hover:text-slate-900">
             Applications
           </Link>
+          <Link href="/dashboard/products" className="hover:text-slate-900">
+            Products
+          </Link>
+          <Link href="/dashboard/customers" className="hover:text-slate-900">
+            Customers
+          </Link>
+          <Link href="/dashboard/subscriptions" className="hover:text-slate-900">
+            Subscriptions
+          </Link>
+          <Link href="/dashboard/coupons" className="hover:text-slate-900">
+            Coupons
+          </Link>
           <Link href="/dashboard/profile" className="hover:text-slate-900">
             Profile
           </Link>

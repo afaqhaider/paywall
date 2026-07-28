@@ -1,5 +1,6 @@
-// Phase 3: Application Registry.
-// Subscriptions, payments, licensing, analytics: not yet.
+// Phase 4: Subscription Engine (provider-independent core).
+// Payments, invoices, refunds, webhooks, runtime entitlement enforcement,
+// license keys: not yet.
 
 generator client {
   provider      = "prisma-client-js"
@@ -67,6 +68,160 @@ enum DomainVerificationStatus {
   FAILED
 }
 
+// ---- Subscription Engine enums ----
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProductVisibility {
+  PRIVATE
+  INTERNAL
+  PUBLIC
+}
+
+enum PlanBillingType {
+  RECURRING
+  ONE_TIME
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BillingInterval {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+  SEMIANNUAL
+  YEAR
+  LIFETIME
+  CUSTOM
+}
+
+enum PriceStatus {
+  ACTIVE
+  ARCHIVED
+  SCHEDULED
+}
+
+enum FeatureType {
+  BOOLEAN
+  NUMERIC_LIMIT
+  TEXT
+  UNLIMITED
+}
+
+enum CustomerType {
+  INDIVIDUAL
+  ORGANIZATION
+  EXTERNAL
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  PAUSED
+  CANCELED
+  EXPIRED
+  SUSPENDED
+}
+
+enum SubscriptionProvider {
+  WEB
+  APPLE_APP_STORE
+  GOOGLE_PLAY
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  MANUAL
+  OTHER
+}
+
+enum SubscriptionEventType {
+  CREATED
+  TRIAL_STARTED
+  TRIAL_CONVERTED
+  TRIAL_CANCELED
+  TRIAL_EXPIRED
+  ACTIVATED
+  RENEWED
+  UPGRADED
+  DOWNGRADED
+  INTERVAL_CHANGED
+  SEATS_CHANGED
+  PAUSED
+  RESUMED
+  CANCEL_SCHEDULED
+  CANCELED
+  EXPIRED
+  SUSPENDED
+  REACTIVATED
+  PAYMENT_FAILED
+  GRACE_PERIOD_STARTED
+  PAST_DUE
+  SCHEDULED_CHANGE_CREATED
+  SCHEDULED_CHANGE_APPLIED
+  SCHEDULED_CHANGE_CANCELED
+  COUPON_APPLIED
+  COUPON_REMOVED
+}
+
+enum SubscriptionChangeType {
+  UPGRADE
+  DOWNGRADE
+  INTERVAL_CHANGE
+  SEAT_CHANGE
+  CANCEL_AT_PERIOD_END
+  PAUSE
+}
+
+enum SubscriptionChangeStatus {
+  PENDING
+  APPLIED
+  CANCELED
+}
+
+enum ProrationReason {
+  UPGRADE
+  DOWNGRADE
+  SEAT_INCREASE
+  SEAT_DECREASE
+  INTERVAL_CHANGE
+}
+
+enum TrialStatus {
+  ACTIVE
+  CONVERTED
+  CANCELED
+  EXPIRED
+}
+
+enum CouponDiscountType {
+  FIXED
+  PERCENTAGE
+}
+
+enum CouponDuration {
+  ONCE
+  REPEATING
+  FOREVER
+}
+
+enum CouponStatus {
+  ACTIVE
+  ARCHIVED
+  EXPIRED
+}
+
 enum AuditAction {
   USER_REGISTERED
   LOGIN_SUCCEEDED
@@ -104,6 +259,34 @@ enum AuditAction {
   APPLICATION_SECRET_ROTATED
   APPLICATION_SECRET_REMOVED
   APPLICATION_SETTING_UPDATED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_ARCHIVED
+  PRODUCT_RESTORED
+  PLAN_CREATED
+  PLAN_UPDATED
+  PLAN_ARCHIVED
+  PLAN_RESTORED
+  PRICE_CREATED
+  PRICE_UPDATED
+  PRICE_ARCHIVED
+  FEATURE_CREATED
+  FEATURE_UPDATED
+  FEATURE_ARCHIVED
+  ENTITLEMENT_DEFINITION_CREATED
+  ENTITLEMENT_DEFINITION_UPDATED
+  CUSTOMER_CREATED
+  CUSTOMER_UPDATED
+  COUPON_CREATED
+  COUPON_UPDATED
+  COUPON_ARCHIVED
+  PROMOTION_CODE_CREATED
+  PROMOTION_CODE_ARCHIVED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELED
+  SUBSCRIPTION_CHANGE_SCHEDULED
+  SUBSCRIPTION_CHANGE_CANCELED
 }
 
 model User {
@@ -135,6 +318,11 @@ model User {
   createdApplications        Application[]
   createdApplicationVersions ApplicationVersion[]
   createdApplicationSecrets  ApplicationSecret[]
+  createdProducts            Product[]
+  createdCoupons             Coupon[]
+  createdSubscriptionChanges SubscriptionChange[]
+  subscriptionEvents         SubscriptionEvent[]
+  customers                  Customer[]
 
   @@map("users")
 }
@@ -191,9 +379,13 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members      OrganizationMember[]
-  auditLogs    AuditLog[]
-  applications Application[]
+  members       OrganizationMember[]
+  auditLogs     AuditLog[]
+  applications  Application[]
+  products      Product[]
+  customers     Customer[]
+  subscriptions Subscription[]
+  coupons       Coupon[]
 
   @@map("organizations")
 }
@@ -263,13 +455,18 @@ model Application {
   updatedAt   DateTime  @updatedAt
   archivedAt  DateTime?
 
-  versions     ApplicationVersion[]
-  environments ApplicationEnvironment[]
-  secrets      ApplicationSecret[]
-  domains      ApplicationDomain[]
-  settings     ApplicationSetting[]
-  members      ApplicationMember[]
-  auditLogs    AuditLog[]
+  versions               ApplicationVersion[]
+  environments           ApplicationEnvironment[]
+  secrets                ApplicationSecret[]
+  domains                ApplicationDomain[]
+  settings               ApplicationSetting[]
+  members                ApplicationMember[]
+  auditLogs              AuditLog[]
+  products               Product[]
+  features               Feature[]
+  entitlementDefinitions EntitlementDefinition[]
+  customers              Customer[]
+  subscriptions          Subscription[]
 
   @@index([organizationId])
   @@map("applications")
@@ -407,4 +604,506 @@ model ApplicationMember {
   @@unique([applicationId, userId])
   @@index([userId])
   @@map("application_members")
+}
+
+// =====================================================================
+// Subscription Engine (Phase 4) - provider-independent core.
+// No payment collection, invoicing, or webhook ingestion happens here;
+// this layer only models the commercial catalog and subscription
+// lifecycle so any provider (web, App Store, Play, Easypaisa, JazzCash,
+// bank transfer, manual) can plug in later without changing this schema.
+// =====================================================================
+
+/// A commercial offering linked to an Application (e.g. "LedGix Expense",
+/// "HydroMetrix Premium"). One Application can have multiple Products.
+model Product {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  name        String
+  slug        String            @unique
+  description String?
+  status      ProductStatus     @default(DRAFT)
+  visibility  ProductVisibility @default(PRIVATE)
+  metadata    Json?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  plans         Plan[]
+  subscriptions Subscription[]
+  trials        Trial[]
+  coupons       Coupon[]
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("products")
+}
+
+/// A pricing/feature tier of a Product (Free, Basic, Pro, Enterprise, ...).
+model Plan {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  name          String
+  code          String
+  description   String?
+  billingType   PlanBillingType @default(RECURRING)
+  trialEligible Boolean         @default(false)
+  trialDays     Int?
+  seatLimit     Int?
+  status        PlanStatus      @default(DRAFT)
+  sortOrder     Int             @default(0)
+  metadata      Json?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  prices          Price[]
+  planFeatures    PlanFeature[]
+  subscriptions   Subscription[]
+  trials          Trial[]
+  coupons         Coupon[]
+  targetOfChanges SubscriptionChange[]
+
+  @@unique([productId, code])
+  @@index([productId])
+  @@map("plans")
+}
+
+/// A price point for a Plan. Amounts are always integer minor units
+/// (cents) - never floating point. Multiple Prices let a Plan support
+/// several currencies/regions/intervals simultaneously.
+model Price {
+  id     String @id @default(uuid())
+  planId String
+  plan   Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  currency      String // ISO 4217, e.g. "USD", "PKR"
+  amountMinor   Int // integer minor units - never a float
+  interval      BillingInterval @default(MONTH)
+  intervalCount Int             @default(1)
+  taxInclusive  Boolean         @default(false)
+  countryCode   String? // ISO 3166-1 alpha-2; null = default/global
+  providerRef   String? // external provider's own price ID, purely a reference
+  effectiveAt   DateTime        @default(now())
+  expiresAt     DateTime?
+  status        PriceStatus     @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptionItems SubscriptionItem[]
+  targetOfChanges   SubscriptionChange[]
+
+  @@index([planId])
+  @@map("prices")
+}
+
+/// A capability an Application exposes to plans (number of users, storage,
+/// API access, ...). Shared across every Product of that Application.
+model Feature {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  key         String
+  name        String
+  description String?
+  type        FeatureType @default(BOOLEAN)
+  unit        String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  planFeatures           PlanFeature[]
+  usageRecords           UsageRecord[]
+  entitlementDefinitions EntitlementDefinition[]
+
+  @@unique([applicationId, key])
+  @@map("features")
+}
+
+/// The value of one Feature on one Plan (a boolean flag, a numeric limit,
+/// free text, or "unlimited").
+model PlanFeature {
+  id        String  @id @default(uuid())
+  planId    String
+  plan      Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  featureId String
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  boolValue   Boolean?
+  numberValue Int?
+  textValue   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planId, featureId])
+  @@map("plan_features")
+}
+
+/// A stable, application-scoped key that client SDKs will check at runtime
+/// once Phase 6 implements entitlement enforcement. Decouples the runtime
+/// check key from how a Feature happens to be billed/labeled.
+model EntitlementDefinition {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  featureId     String?
+  feature       Feature?    @relation(fields: [featureId], references: [id], onDelete: SetNull)
+
+  key         String
+  name        String
+  description String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  @@unique([applicationId, key])
+  @@map("entitlement_definitions")
+}
+
+/// A platform-level customer identity, distinct from the auth User model.
+/// May represent an individual, an organization/company, or a purely
+/// external identity - and carries a free-form map of external provider
+/// customer IDs (`{"stripe": "cus_123", ...}`) without coupling this
+/// engine to any specific provider's schema.
+model Customer {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  type        CustomerType @default(INDIVIDUAL)
+  displayName String?
+  email       String?
+  externalIds Json?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions       Subscription[]
+  usageRecords        UsageRecord[]
+  trials              Trial[]
+  subscriptionCoupons SubscriptionCoupon[]
+  promotionCodes      PromotionCode[]
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([userId])
+  @@map("customers")
+}
+
+/// The core subscription record. Provider-agnostic: `provider` +
+/// `providerSubscriptionId` are just a reference to wherever the money
+/// side eventually lives (Phase 5) - none of the lifecycle logic here
+/// depends on any specific provider's API or webhook shape.
+model Subscription {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  planId         String
+  plan           Plan         @relation(fields: [planId], references: [id])
+  applicationId  String
+  application    Application  @relation(fields: [applicationId], references: [id])
+
+  environmentType        ApplicationEnvironmentType @default(PRODUCTION)
+  provider               SubscriptionProvider       @default(MANUAL)
+  providerSubscriptionId String?
+  status                 SubscriptionStatus         @default(INCOMPLETE)
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+
+  cancelAtPeriodEnd  Boolean   @default(false)
+  canceledAt         DateTime?
+  cancellationReason String?
+  gracePeriodEnd     DateTime?
+
+  quantity Int   @default(1)
+  metadata Json?
+  version  Int   @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items               SubscriptionItem[]
+  events              SubscriptionEvent[]
+  changes             SubscriptionChange[]
+  trial               Trial?
+  subscriptionCoupons SubscriptionCoupon[]
+  usageRecords        UsageRecord[]
+  prorationRecords    ProrationRecord[]
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([productId])
+  @@index([applicationId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+/// A line item on a subscription (usually one, but supports future
+/// multi-item / add-on subscriptions).
+model SubscriptionItem {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  priceId        String
+  price          Price        @relation(fields: [priceId], references: [id])
+
+  quantity Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subscriptionId])
+  @@map("subscription_items")
+}
+
+/// An immutable, append-only record of every subscription lifecycle
+/// transition. Never updated or deleted; `idempotencyKey` lets a caller
+/// safely retry the same mutation without double-recording the event.
+model SubscriptionEvent {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  type           SubscriptionEventType
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionStatus?
+  idempotencyKey String?               @unique
+  metadata       Json?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([type])
+  @@map("subscription_events")
+}
+
+/// A scheduled subscription change (downgrade at renewal, cancel at period
+/// end, interval switch, seat reduction, ...) applied at the correct
+/// lifecycle event rather than immediately.
+model SubscriptionChange {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  type           SubscriptionChangeType
+  status         SubscriptionChangeStatus @default(PENDING)
+  targetPlanId   String?
+  targetPlan     Plan?                    @relation(fields: [targetPlanId], references: [id])
+  targetPriceId  String?
+  targetPrice    Price?                   @relation(fields: [targetPriceId], references: [id])
+  targetQuantity Int?
+  effectiveAt    DateTime
+  appliedAt      DateTime?
+  canceledAt     DateTime?
+  metadata       Json?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("subscription_changes")
+}
+
+/// A calculated (not collected) proration adjustment for an immediate
+/// plan/seat/interval change - credit for unused time on the old price,
+/// charge for remaining time on the new one. Money never moves here;
+/// Phase 5 will read these records when it actually collects payment.
+model ProrationRecord {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  reason      ProrationReason
+  creditMinor Int             @default(0)
+  chargeMinor Int             @default(0)
+  netMinor    Int
+  currency    String
+  periodStart DateTime
+  periodEnd   DateTime
+  changeAt    DateTime        @default(now())
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@map("proration_records")
+}
+
+/// One trial per (customer, product) - enforced by the unique constraint,
+/// the simplest reliable abuse-prevention mechanism; `deviceFingerprint`/
+/// `ipAddress` are recorded for future, stronger abuse detection.
+model Trial {
+  id             String        @id @default(uuid())
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           Plan          @relation(fields: [planId], references: [id])
+  subscriptionId String?       @unique
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  startedAt DateTime    @default(now())
+  endsAt    DateTime
+  status    TrialStatus @default(ACTIVE)
+
+  convertedAt DateTime?
+  canceledAt  DateTime?
+
+  deviceFingerprint String?
+  ipAddress         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([customerId, productId])
+  @@index([productId])
+  @@map("trials")
+}
+
+/// An internal discount definition. `PromotionCode` is the customer-facing
+/// redeemable code layered on top - one Coupon can back many codes.
+model Coupon {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  code             String
+  name             String?
+  discountType     CouponDiscountType
+  amountOffMinor   Int?
+  percentOff       Int?
+  currency         String?
+  duration         CouponDuration     @default(ONCE)
+  durationInCycles Int?
+  maxRedemptions   Int?
+  redemptionCount  Int                @default(0)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  planId    String?
+  plan      Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime?
+  status    CouponStatus @default(ACTIVE)
+  metadata  Json?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  promotionCodes      PromotionCode[]
+  subscriptionCoupons SubscriptionCoupon[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("coupons")
+}
+
+/// A customer-facing redeemable code backed by a Coupon. Optionally
+/// restricted to one specific Customer.
+model PromotionCode {
+  id       String @id @default(uuid())
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  code            String  @unique
+  active          Boolean @default(true)
+  maxRedemptions  Int?
+  redemptionCount Int     @default(0)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptionCoupons SubscriptionCoupon[]
+
+  @@index([couponId])
+  @@map("promotion_codes")
+}
+
+/// A coupon applied to one specific subscription.
+model SubscriptionCoupon {
+  id             String       @id @default(uuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  couponId       String
+  coupon         Coupon       @relation(fields: [couponId], references: [id])
+
+  promotionCodeId String?
+  promotionCode   PromotionCode? @relation(fields: [promotionCodeId], references: [id], onDelete: SetNull)
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+
+  appliedAt DateTime  @default(now())
+  endsAt    DateTime?
+  removedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@map("subscription_coupons")
+}
+
+/// A single usage event for a metered Feature. `idempotencyKey` prevents
+/// double-counting on retry. No usage-based invoicing happens here -
+/// this is purely a recording foundation for Phase 5+.
+model UsageRecord {
+  id             String        @id @default(uuid())
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  featureId      String
+  feature        Feature       @relation(fields: [featureId], references: [id])
+
+  quantity       Int
+  occurredAt     DateTime @default(now())
+  idempotencyKey String   @unique
+  source         String?
+  metadata       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@index([featureId])
+  @@map("usage_records")
 }

@@ -15,6 +15,13 @@ import { OrganizationsModule } from "./organizations/organizations.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProfileModule } from "./profile/profile.module";
 import { UsersModule } from "./users/users.module";
+import { ProductsModule } from "./products/products.module";
+import { FeaturesModule } from "./features/features.module";
+import { CustomersModule } from "./customers/customers.module";
+import { SubscriptionsModule } from "./subscriptions/subscriptions.module";
+import { CouponsModule } from "./coupons/coupons.module";
+import { TrialsModule } from "./trials/trials.module";
+import { UsageModule } from "./usage/usage.module";
 
 @Module({
   imports: [
@@ -56,6 +63,13 @@ import { UsersModule } from "./users/users.module";
     ProfileModule,
     OrganizationsModule,
     ApplicationsModule,
+    ProductsModule,
+    FeaturesModule,
+    CustomersModule,
+    CouponsModule,
+    SubscriptionsModule,
+    TrialsModule,
+    UsageModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
