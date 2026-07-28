@@ -1,8 +1,8 @@
 export type ApplicationStatus = "ACTIVE" | "ARCHIVED";
 export type ApplicationVisibility = "PRIVATE" | "INTERNAL";
 export type ApplicationMemberRole =
-  "OWNER" | "ADMINISTRATOR" | "DEVELOPER" | "TESTER" | "SUPPORT" | "VIEWER";
-export type ApplicationEnvironmentType = "DEVELOPMENT" | "STAGING" | "PRODUCTION";
+  "OWNER" | "ADMINISTRATOR" | "MAINTAINER" | "DEVELOPER" | "TESTER" | "SUPPORT" | "VIEWER";
+export type ApplicationEnvironmentType = "DEVELOPMENT" | "STAGING" | "PRODUCTION" | "SANDBOX";
 export type ApplicationSecretType =
   "API_KEY" | "WEBHOOK_SECRET" | "JWT_SECRET" | "OAUTH_CREDENTIAL" | "PAYMENT_CREDENTIAL" | "OTHER";
 export type DomainSslStatus = "PENDING" | "ACTIVE" | "FAILED" | "EXPIRED";
@@ -107,6 +107,7 @@ export interface ApplicationMember {
 export const APPLICATION_MEMBER_ROLES: ApplicationMemberRole[] = [
   "OWNER",
   "ADMINISTRATOR",
+  "MAINTAINER",
   "DEVELOPER",
   "TESTER",
   "SUPPORT",
@@ -126,4 +127,5 @@ export const APPLICATION_ENVIRONMENT_TYPES: ApplicationEnvironmentType[] = [
   "DEVELOPMENT",
   "STAGING",
   "PRODUCTION",
+  "SANDBOX",
 ];
