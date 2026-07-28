@@ -39,4 +39,16 @@ export class MailService {
       body: `Reset your password by visiting:\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
     });
   }
+
+  async sendDeveloperInvitationEmail(
+    to: string,
+    applicationName: string,
+    acceptUrl: string,
+  ): Promise<void> {
+    await this.send({
+      to,
+      subject: `You've been invited to join ${applicationName} on SS Zentronics Platform`,
+      body: `You've been invited to join the "${applicationName}" application as a developer. Accept your invitation by visiting:\n${acceptUrl}\n\nThis link expires in 7 days.`,
+    });
+  }
 }

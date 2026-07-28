@@ -29,6 +29,11 @@ import { SeatsModule } from "./seats/seats.module";
 import { UsageLimitsModule } from "./usage-limits/usage-limits.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { DevicesModule } from "./devices/devices.module";
+import { DeveloperProfileModule } from "./developer-profile/developer-profile.module";
+import { InvitationsModule } from "./invitations/invitations.module";
+import { EnvironmentVariablesModule } from "./environment-variables/environment-variables.module";
+import { AllowedOriginsModule } from "./allowed-origins/allowed-origins.module";
+import { OAuthModule } from "./oauth/oauth.module";
 
 @Module({
   imports: [
@@ -84,6 +89,11 @@ import { DevicesModule } from "./devices/devices.module";
     UsageLimitsModule,
     ApiKeysModule,
     DevicesModule,
+    DeveloperProfileModule,
+    InvitationsModule,
+    EnvironmentVariablesModule,
+    AllowedOriginsModule,
+    OAuthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
