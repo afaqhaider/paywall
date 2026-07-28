@@ -23,6 +23,7 @@ import { CouponsModule } from "./coupons/coupons.module";
 import { TrialsModule } from "./trials/trials.module";
 import { UsageModule } from "./usage/usage.module";
 import { PaymentsModule } from "./payments/payments.module";
+import { EntitlementsModule } from "./entitlements/entitlements.module";
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { PaymentsModule } from "./payments/payments.module";
     TrialsModule,
     UsageModule,
     PaymentsModule,
+    EntitlementsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
