@@ -63,6 +63,12 @@ import { SchedulerModule } from "./scheduler/scheduler.module";
 import { AutomationModule } from "./automation/automation.module";
 import { NotificationsEngineModule } from "./notifications-engine/notifications-engine.module";
 import { SystemHealthModule } from "./system-health/system-health.module";
+import { MarketplaceModule } from "./marketplace/marketplace.module";
+import { WhiteLabelModule } from "./white-label/white-label.module";
+import { PlatformSearchModule } from "./platform-search/platform-search.module";
+import { ReportsModule } from "./reports/reports.module";
+import { ReviewsModule } from "./reviews/reviews.module";
+import { PlatformAnalyticsModule } from "./platform-analytics/platform-analytics.module";
 
 @Module({
   imports: [
@@ -152,6 +158,12 @@ import { SystemHealthModule } from "./system-health/system-health.module";
     NotificationsEngineModule,
     AutomationModule,
     SystemHealthModule,
+    MarketplaceModule,
+    WhiteLabelModule,
+    PlatformSearchModule,
+    ReportsModule,
+    ReviewsModule,
+    PlatformAnalyticsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

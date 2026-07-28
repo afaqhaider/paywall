@@ -13,6 +13,7 @@ const TABS = [
   { href: "/secrets", label: "Secrets" },
   { href: "/environments", label: "Environments" },
   { href: "/financial", label: "Financial" },
+  { href: "/listing", label: "Listing" },
 ];
 
 export function AppNav({ applicationId }: { applicationId: string }) {

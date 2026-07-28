@@ -64,6 +64,9 @@ export function DashboardNav({ children }: { children?: React.ReactNode }) {
           <Link href="/dashboard/analytics" className="hover:text-slate-900">
             Analytics
           </Link>
+          <Link href="/dashboard/analytics-org" className="hover:text-slate-900">
+            Developer Analytics
+          </Link>
           <Link href="/dashboard/api-docs" className="hover:text-slate-900">
             API Docs
           </Link>
@@ -90,6 +93,9 @@ export function DashboardNav({ children }: { children?: React.ReactNode }) {
           </Link>
           <Link href="/dashboard/payment-methods" className="hover:text-slate-900">
             Payment Methods
+          </Link>
+          <Link href="/dashboard/white-label" className="hover:text-slate-900">
+            White-label
           </Link>
           <Link href="/dashboard/profile" className="hover:text-slate-900">
             Profile

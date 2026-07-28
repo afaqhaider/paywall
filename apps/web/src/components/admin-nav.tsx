@@ -29,6 +29,10 @@ const NAV_LINKS = [
   { href: "/admin/fraud-center", label: "Fraud Center" },
   { href: "/admin/reports", label: "Reports" },
   { href: "/admin/announcements", label: "Announcements" },
+  { href: "/admin/executive-dashboard", label: "Executive Dashboard" },
+  { href: "/admin/platform-intelligence", label: "Platform Intelligence" },
+  { href: "/admin/report-requests", label: "Report Requests" },
+  { href: "/admin/review-reports", label: "Review Reports" },
   { href: "/admin/settings", label: "Settings" },
 ];
 

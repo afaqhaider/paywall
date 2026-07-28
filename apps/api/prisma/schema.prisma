@@ -565,6 +565,17 @@ enum AuditAction {
   QUEUE_PAUSED
   QUEUE_RESUMED
   AUTOMATION_ACTION_LOGGED
+  LISTING_CREATED
+  LISTING_UPDATED
+  LISTING_PUBLISHED
+  LISTING_UNPUBLISHED
+  LISTING_ARCHIVED
+  MARKETPLACE_CATEGORY_CREATED
+  MARKETPLACE_TAG_CREATED
+  REVIEW_REPORTED
+  REVIEW_REPORT_RESOLVED
+  REPORT_REQUESTED
+  WHITE_LABEL_CONFIG_UPDATED
 }
 
 // ---------------------------------------------------------------------------
@@ -1441,6 +1452,11 @@ model User {
   updatedFeatureFlags          FeatureFlag[]
   updatedMessageTemplates      MessageTemplate[]
   createdAnnouncements         PlatformAnnouncement[]
+  createdListings              Listing[]
+  sentListingInvites           ListingInvite[]
+  reviewReplies                ReviewReply[]
+  reviewReports                ReviewReport[]
+  reportRequests               ReportRequest[]
 
   @@map("users")
 }
@@ -1518,6 +1534,8 @@ model Organization {
   deviceRegistrations  DeviceRegistration[]
   financialIntegration FinancialIntegration?
   financialEvents      FinancialEvent[]
+  whiteLabelConfig     WhiteLabelConfig?
+  reportRequests       ReportRequest[]
 
   @@map("organizations")
 }
@@ -1611,6 +1629,7 @@ model Application {
   oauthApplications      OAuthApplication[]
   webhookEndpoints       WebhookEndpoint[]
   financialEvents        FinancialEvent[]
+  listing                Listing?
 
   @@index([organizationId])
   @@map("applications")
@@ -1965,6 +1984,7 @@ model Customer {
   paymentTransactions PaymentTransaction[]
   paymentInvoices     PaymentInvoice[]
   financialEvents     FinancialEvent[]
+  reviews             Review[]
 
   @@index([organizationId])
   @@index([applicationId])
@@ -3406,4 +3426,374 @@ model PlatformAnnouncement {
 
   @@index([type])
   @@map("platform_announcements")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 11: Marketplace, Analytics & Platform Intelligence
+// ---------------------------------------------------------------------------
+// Purely additive, same as Phase 10's header comment above: nothing here
+// changes how Application/Subscription/Payment/Customer/License data is
+// produced or owned. `Listing` is a 1:1 marketplace-facing wrapper around
+// an existing `Application` (never a duplicate of its core fields);
+// `AnalyticsSnapshot` is a generic pre-aggregated cache row computed FROM
+// existing tables (Subscription, PaymentTransaction, License, ApiClient,
+// WebhookDelivery, FinancialSync, etc.) rather than a second copy of that
+// data - every analytics endpoint can also compute live from source tables
+// when no snapshot exists yet. There is no object-storage integration in
+// this platform (see Phase 10's `StorageHealthProvider`), so uploaded
+// media/report output is either an external URL or stored as `Bytes` in
+// the row that owns it - a real S3-compatible backend is a follow-up.
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+  ARCHIVED
+}
+
+/// Distinct from `ApplicationVisibility` (App Registry / dev-portal scoping,
+/// Phase 3) - this governs who can find/open the *marketplace listing*.
+enum ListingVisibility {
+  PUBLIC
+  PRIVATE
+  INVITE_ONLY
+  INTERNAL
+}
+
+enum MediaAssetType {
+  ICON
+  SCREENSHOT
+  VIDEO
+}
+
+model Listing {
+  id            String      @id @default(uuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  tagline     String?
+  description String?
+
+  status     ListingStatus     @default(DRAFT)
+  visibility ListingVisibility @default(PRIVATE)
+
+  publishedAt   DateTime?
+  unpublishedAt DateTime?
+
+  installCount Int @default(0)
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  categories ListingCategory[]
+  tags       ListingTag[]
+  media      ListingMedia[]
+  changelogs ListingChangelog[]
+  invites    ListingInvite[]
+  reviews    Review[]
+
+  @@index([status])
+  @@index([visibility])
+  @@map("marketplace_listings")
+}
+
+model MarketplaceCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+
+  createdAt DateTime @default(now())
+
+  listings ListingCategory[]
+
+  @@map("marketplace_categories")
+}
+
+model ListingCategory {
+  id         String              @id @default(uuid())
+  listingId  String
+  listing    Listing             @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   MarketplaceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, categoryId])
+  @@index([categoryId])
+  @@map("marketplace_listing_categories")
+}
+
+model MarketplaceTag {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  createdAt DateTime @default(now())
+
+  listings ListingTag[]
+
+  @@map("marketplace_tags")
+}
+
+model ListingTag {
+  id        String         @id @default(uuid())
+  listingId String
+  listing   Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       MarketplaceTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, tagId])
+  @@index([tagId])
+  @@map("marketplace_listing_tags")
+}
+
+/// Stores an external URL (CDN, provider-hosted, or a future object-storage
+/// upload endpoint) - see the phase header comment re: no storage backend
+/// exists yet.
+model ListingMedia {
+  id        String         @id @default(uuid())
+  listingId String
+  listing   Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  type      MediaAssetType
+  url       String
+  caption   String?
+  position  Int            @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([listingId])
+  @@map("marketplace_listing_media")
+}
+
+model ListingChangelog {
+  id        String  @id @default(uuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  version   String
+  notes     String
+
+  publishedAt DateTime @default(now())
+
+  @@index([listingId])
+  @@map("marketplace_listing_changelogs")
+}
+
+/// One row per invited email for an INVITE_ONLY listing.
+model ListingInvite {
+  id          String   @id @default(uuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  email       String
+  invitedById String
+  invitedBy   User     @relation(fields: [invitedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([listingId, email])
+  @@map("marketplace_listing_invites")
+}
+
+enum ReviewReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  rating Int
+  title  String?
+  body   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  reply   ReviewReply?
+  reports ReviewReport[]
+
+  @@unique([listingId, customerId])
+  @@index([listingId])
+  @@index([customerId])
+  @@map("marketplace_reviews")
+}
+
+model ReviewReply {
+  id       String @id @default(uuid())
+  reviewId String @unique
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+  body     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("marketplace_review_replies")
+}
+
+model ReviewReport {
+  id       String @id @default(uuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  reportedById String
+  reportedBy   User               @relation(fields: [reportedById], references: [id])
+  reason       String
+  status       ReviewReportStatus @default(PENDING)
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([reviewId])
+  @@index([status])
+  @@map("marketplace_review_reports")
+}
+
+enum AnalyticsMetric {
+  MRR
+  ARR
+  CHURN_RATE
+  TRIAL_CONVERSION_RATE
+  REVENUE
+  REFUND_RATE
+  CHARGEBACK_RATE
+  CUSTOMER_LIFETIME_VALUE
+  RETENTION_RATE
+  GROWTH_RATE
+  DAILY_ACTIVE_USERS
+  MONTHLY_ACTIVE_USERS
+  SEAT_UTILIZATION
+  LICENSE_USAGE
+  API_USAGE
+  WEBHOOK_VOLUME
+  STORAGE_USAGE
+  FINANCIAL_SYNC_SUCCESS_RATE
+}
+
+enum AnalyticsScope {
+  PLATFORM
+  ORGANIZATION
+  APPLICATION
+}
+
+enum AnalyticsPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// Generic pre-aggregated metric cache, one row per (metric, scope, scope
+/// target, period, periodStart). Populated by a scheduled background job
+/// (Phase 10's job framework) and safe to recompute/upsert idempotently -
+/// never the source of truth, always derivable from existing tables.
+model AnalyticsSnapshot {
+  id             String          @id @default(uuid())
+  metric         AnalyticsMetric
+  scope          AnalyticsScope
+  organizationId String?
+  applicationId  String?
+  period         AnalyticsPeriod
+  periodStart    DateTime
+  periodEnd      DateTime
+  value          Float
+  metadata       Json?
+
+  computedAt DateTime @default(now())
+
+  @@unique([metric, scope, organizationId, applicationId, period, periodStart])
+  @@index([metric, scope])
+  @@index([organizationId])
+  @@index([applicationId])
+  @@map("analytics_snapshots")
+}
+
+enum ReportType {
+  REVENUE
+  SUBSCRIPTIONS
+  CUSTOMERS
+  APPLICATIONS
+  MARKETPLACE
+  FINANCIAL_SYNC
+  DEVELOPER_ACTIVITY
+  API_USAGE
+  LICENSE_USAGE
+  STORAGE
+}
+
+enum ReportFormat {
+  CSV
+  EXCEL
+  PDF
+  JSON
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+/// Generated asynchronously via a `REPORT_GENERATION` background job. The
+/// output is stored directly as `Bytes` on this row (no object storage
+/// backend exists - see phase header comment) and streamed back on demand.
+model ReportRequest {
+  id     String       @id @default(uuid())
+  type   ReportType
+  format ReportFormat
+  status ReportStatus @default(PENDING)
+
+  filters        Json?
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  requestedById String
+  requestedBy   User   @relation(fields: [requestedById], references: [id])
+
+  filename   String?
+  mimeType   String?
+  resultData Bytes?
+  error      String?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([type])
+  @@index([organizationId])
+  @@index([requestedById])
+  @@map("report_requests")
+}
+
+/// One row per organization opting into white-label branding for their own
+/// customer-facing surfaces (customer portal, marketplace listing page,
+/// outbound notification email templates). `emailTemplates` is a small
+/// override map keyed by `NotificationCategory` layered on top of the
+/// platform's own `NotificationTemplate` rows at render time - it does not
+/// replace or duplicate that table.
+model WhiteLabelConfig {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  logoUrl             String?
+  brandName           String?
+  primaryColor        String?
+  secondaryColor      String?
+  customDomain        String? @unique
+  emailFromName       String?
+  emailTemplates      Json?
+  marketplaceBranding Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("white_label_configs")
 }
