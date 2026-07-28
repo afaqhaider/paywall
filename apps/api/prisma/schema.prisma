@@ -292,6 +292,65 @@ enum DeviceStatus {
   ACTIVE
   INACTIVE
   BLOCKED
+  REMOVED
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: Customer Portal & Financial Integration
+// ---------------------------------------------------------------------------
+
+enum FinancialProviderType {
+  INTERNAL
+  LEDGIX_ERP
+}
+
+enum ERPConnectionStatus {
+  NOT_CONFIGURED
+  PENDING_TEST
+  CONNECTED
+  FAILED
+  DISCONNECTED
+}
+
+enum ERPResourceType {
+  CUSTOMERS
+  SUPPLIERS
+  INVOICES
+  RECEIPTS
+  BANKS
+  PAYMENT_GATEWAYS
+  CURRENCIES
+  TAXES
+  COMPANY
+  CHART_OF_ACCOUNTS
+  PAYMENT_METHODS
+  JOURNAL_ENTRIES
+}
+
+enum FinancialEventType {
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_CANCELED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  REFUND_ISSUED
+}
+
+enum SyncStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  RETRYING
+  DEAD_LETTER
+}
+
+enum NotificationType {
+  BILLING
+  SECURITY
+  SYNC
+  SYSTEM
+  GENERAL
 }
 
 enum AuditAction {
@@ -411,6 +470,22 @@ enum AuditAction {
   WEBHOOK_ENDPOINT_DELETED
   WEBHOOK_SECRET_ROTATED
   WEBHOOK_DELIVERY_RETRIED
+  FINANCIAL_INTEGRATION_UPDATED
+  ERP_CONNECTION_CREATED
+  ERP_CONNECTION_TESTED
+  ERP_CONNECTION_UPDATED
+  ERP_CONNECTION_CREDENTIAL_ROTATED
+  ERP_CONNECTION_DISCONNECTED
+  ERP_CONFIGURATION_UPDATED
+  FINANCIAL_EVENT_CREATED
+  FINANCIAL_SYNC_RETRIED
+  FINANCIAL_SYNC_DEAD_LETTERED
+  DEVICE_RENAMED
+  DEVICE_DEACTIVATED
+  DEVICE_REMOVED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  SUBSCRIPTION_SELF_SERVICE_ACTION
 }
 
 // ---------------------------------------------------------------------------
@@ -943,6 +1018,11 @@ model User {
   createdEnvironmentVariables  EnvironmentVariable[]
   createdOAuthApplications     OAuthApplication[]
   createdWebhookEndpoints      WebhookEndpoint[]
+  twoFactorCredential          TwoFactorCredential?
+  notifications                Notification[]
+  resolvedSyncErrors           SyncError[]
+  financialIntegrations        FinancialIntegration[]
+  erpconnections               ERPConnection[]
 
   @@map("users")
 }
@@ -999,19 +1079,21 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members             OrganizationMember[]
-  auditLogs           AuditLog[]
-  applications        Application[]
-  products            Product[]
-  customers           Customer[]
-  subscriptions       Subscription[]
-  coupons             Coupon[]
-  paymentProviders    PaymentProvider[]
-  entitlementGrants   EntitlementGrant[]
-  featureAccess       FeatureAccess[]
-  licenses            License[]
-  apiClients          APIClient[]
-  deviceRegistrations DeviceRegistration[]
+  members              OrganizationMember[]
+  auditLogs            AuditLog[]
+  applications         Application[]
+  products             Product[]
+  customers            Customer[]
+  subscriptions        Subscription[]
+  coupons              Coupon[]
+  paymentProviders     PaymentProvider[]
+  entitlementGrants    EntitlementGrant[]
+  featureAccess        FeatureAccess[]
+  licenses             License[]
+  apiClients           APIClient[]
+  deviceRegistrations  DeviceRegistration[]
+  financialIntegration FinancialIntegration?
+  financialEvents      FinancialEvent[]
 
   @@map("organizations")
 }
@@ -1104,6 +1186,7 @@ model Application {
   allowedOrigins         AllowedOrigin[]
   oauthApplications      OAuthApplication[]
   webhookEndpoints       WebhookEndpoint[]
+  financialEvents        FinancialEvent[]
 
   @@index([organizationId])
   @@map("applications")
@@ -1455,6 +1538,7 @@ model Customer {
   checkoutSessions    PaymentCheckoutSession[]
   paymentTransactions PaymentTransaction[]
   paymentInvoices     PaymentInvoice[]
+  financialEvents     FinancialEvent[]
 
   @@index([organizationId])
   @@index([applicationId])
@@ -1514,6 +1598,7 @@ model Subscription {
   entitlementGrants   EntitlementGrant[]
   licenses            License[]
   usageCounters       UsageCounter[]
+  financialEvents     FinancialEvent[]
 
   @@index([organizationId])
   @@index([customerId])
@@ -2124,6 +2209,9 @@ model DeviceRegistration {
   license        License?      @relation(fields: [licenseId], references: [id], onDelete: SetNull)
 
   deviceId   String
+  /// User-assigned display label (Customer Portal "Rename Device") - falls
+  /// back to platform/deviceId in the UI when unset.
+  name       String?
   platform   DevicePlatform
   status     DeviceStatus   @default(ACTIVE)
   appVersion String?
@@ -2458,4 +2546,286 @@ model WebhookRetry {
 
   @@index([webhookDeliveryId])
   @@map("webhook_retries")
+}
+
+// =====================================================================
+// Phase 8: Customer Portal & Financial Integration
+// One `FinancialIntegration` per Organization selects the System of
+// Record: INTERNAL (the platform's own PaymentInvoice/PaymentReceipt/
+// PaymentTransaction tables, already built in Phase 5 - reused as-is,
+// never duplicated here) or LEDGIX_ERP (an external company reached only
+// through the ERP connector service; nothing outside that connector may
+// ever call out to LedGix directly). `FinancialEvent` is the append-only
+// record of "something happened that the financial side needs to know
+// about"; `SyncQueue`/`FinancialSync`/`SyncHistory`/`SyncError` are the
+// queue -> attempt -> history -> dead-letter pipeline that moves each
+// event toward the configured provider, mirroring the WebhookEndpoint /
+// WebhookDelivery / WebhookRetry shape already established in Phase 7.
+// =====================================================================
+
+/// One per Organization. Selecting LEDGIX_ERP without a completed
+/// `ERPConnection` is a valid (PENDING) state - the wizard supports
+/// "choose ERP" and "connect ERP" as separate steps.
+model FinancialIntegration {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  provider FinancialProviderType @default(INTERNAL)
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  erpConnection ERPConnection?
+
+  @@map("financial_integrations")
+}
+
+/// The LedGix ERP connection itself. `encryptedApiKey`/`iv`/`authTag` use
+/// the same reversible AES-256-GCM helper as ApplicationSecret/
+/// OAuthCredential/WebhookSecret - the connector needs the literal key to
+/// authenticate every request, so it cannot be one-way hashed.
+model ERPConnection {
+  id                     String               @id @default(uuid())
+  financialIntegrationId String               @unique
+  financialIntegration   FinancialIntegration @relation(fields: [financialIntegrationId], references: [id], onDelete: Cascade)
+
+  baseUrl         String
+  companyId       String
+  encryptedApiKey String
+  iv              String
+  authTag         String
+  lastFour        String
+  apiVersion      String @default("v1")
+
+  status         ERPConnectionStatus @default(PENDING_TEST)
+  lastTestedAt   DateTime?
+  lastTestResult Json?
+  lastSyncedAt   DateTime?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  rotatedAt   DateTime?
+
+  company       ERPCompany?
+  configuration ERPConfiguration?
+  syncs         FinancialSync[]
+
+  @@map("erp_connections")
+}
+
+/// Cached company metadata pulled from LedGix on connect/test - a
+/// read-through cache, never the source of truth (the ERP always is).
+model ERPCompany {
+  id              String        @id @default(uuid())
+  erpConnectionId String        @unique
+  erpConnection   ERPConnection @relation(fields: [erpConnectionId], references: [id], onDelete: Cascade)
+
+  externalCompanyId String
+  name              String?
+  baseCurrency      String?
+  raw               Json?
+  fetchedAt         DateTime @default(now())
+
+  @@map("erp_companies")
+}
+
+/// Granular read/write scopes for the connection, one row per
+/// `ERPResourceType` (see `ERPPermission`). Delete is never a supported
+/// verb anywhere in this schema or the connector interface - "Never:
+/// delete invoices/journals/companies/accounting history" is enforced by
+/// that capability simply not existing, not by a runtime check.
+model ERPConfiguration {
+  id              String        @id @default(uuid())
+  erpConnectionId String        @unique
+  erpConnection   ERPConnection @relation(fields: [erpConnectionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  permissions ERPPermission[]
+
+  @@map("erp_configurations")
+}
+
+model ERPPermission {
+  id                 String           @id @default(uuid())
+  erpConfigurationId String
+  erpConfiguration   ERPConfiguration @relation(fields: [erpConfigurationId], references: [id], onDelete: Cascade)
+
+  resource ERPResourceType
+  canRead  Boolean         @default(false)
+  canWrite Boolean         @default(false)
+
+  @@unique([erpConfigurationId, resource])
+  @@map("erp_permissions")
+}
+
+/// An append-only record of something the financial side needs to react
+/// to (subscription activated/renewed/canceled, payment succeeded/failed,
+/// refund issued). Created explicitly by a caller (e.g. the payment
+/// webhook pipeline, once wired up) - this schema does not assume any
+/// automatic trigger from Subscription/Payment tables.
+model FinancialEvent {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  application    Application?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  type    FinancialEventType
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  queueEntry SyncQueue?
+  sync       FinancialSync?
+
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@map("financial_events")
+}
+
+/// The literal work queue a queue processor drains - separate from
+/// `FinancialSync` (the job's current status/attempt state) so "has this
+/// event been picked up yet" and "how is the sync job going" are
+/// distinct, queryable concerns, the same separation Phase 7 drew
+/// between WebhookDelivery rows and the periodic sweep that drains them.
+model SyncQueue {
+  id               String         @id @default(uuid())
+  financialEventId String         @unique
+  financialEvent   FinancialEvent @relation(fields: [financialEventId], references: [id], onDelete: Cascade)
+
+  status              SyncStatus @default(PENDING)
+  enqueuedAt          DateTime   @default(now())
+  processingStartedAt DateTime?
+  dequeuedAt          DateTime?
+
+  @@index([status])
+  @@map("sync_queue")
+}
+
+/// The sync job's current state for one FinancialEvent against the
+/// Organization's configured provider (INTERNAL processing or LEDGIX_ERP
+/// via the connector). `erpReferenceNumber` is what the payment flow
+/// diagram calls "Return ERP Reference Number".
+model FinancialSync {
+  id               String         @id @default(uuid())
+  financialEventId String         @unique
+  financialEvent   FinancialEvent @relation(fields: [financialEventId], references: [id], onDelete: Cascade)
+  erpConnectionId  String?
+  erpConnection    ERPConnection? @relation(fields: [erpConnectionId], references: [id], onDelete: SetNull)
+
+  provider FinancialProviderType
+  status   SyncStatus            @default(PENDING)
+
+  attemptCount       Int       @default(0)
+  nextAttemptAt      DateTime?
+  erpReferenceNumber String?
+  erpInvoiceId       String?
+  erpReceiptId       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  history SyncHistory[]
+  error   SyncError?
+
+  @@index([status])
+  @@index([nextAttemptAt])
+  @@map("financial_syncs")
+}
+
+/// One row per sync attempt - the audit trail behind "View synchronization
+/// history" and the payload/response viewer equivalent for financial syncs.
+model SyncHistory {
+  id              String        @id @default(uuid())
+  financialSyncId String
+  financialSync   FinancialSync @relation(fields: [financialSyncId], references: [id], onDelete: Cascade)
+
+  attemptNumber   Int
+  status          SyncStatus
+  requestSummary  Json?
+  responseSummary Json?
+  error           String?
+  executedAt      DateTime   @default(now())
+
+  @@index([financialSyncId])
+  @@map("sync_history")
+}
+
+/// The dead-letter queue: created once a FinancialSync exhausts its
+/// retries. "Support manual retry" re-arms the parent FinancialSync
+/// (status back to PENDING) and marks this resolved rather than deleting
+/// it, preserving the failure record.
+model SyncError {
+  id              String        @id @default(uuid())
+  financialSyncId String        @unique
+  financialSync   FinancialSync @relation(fields: [financialSyncId], references: [id], onDelete: Cascade)
+
+  error      String
+  occurredAt DateTime  @default(now())
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+
+  resolvedById String?
+  resolvedBy   User?   @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@map("sync_errors")
+}
+
+/// TOTP-based two-factor authentication, one per User. `encryptedSecret`
+/// uses the same reversible AES-256-GCM helper as every other recoverable
+/// secret in this schema (the server must recompute the TOTP to verify a
+/// code). `recoveryCodesHash` stores one-way SHA-256 hashes (the same
+/// `hashOpaqueToken` pattern as refresh/verification tokens) - a recovery
+/// code is consumed, never displayed again, exactly like a plaintext key.
+model TwoFactorCredential {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  encryptedSecret   String
+  iv                String
+  authTag           String
+  recoveryCodesHash Json
+  enabled           Boolean   @default(false)
+  verifiedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("two_factor_credentials")
+}
+
+/// In-app notifications for the Customer Portal's "Notifications" page
+/// (billing/security/sync/system events). Plain per-user rows, no
+/// delivery/push infrastructure - read/unread state only.
+model Notification {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type     NotificationType
+  title    String
+  body     String?
+  metadata Json?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([userId, readAt])
+  @@map("notifications")
 }
