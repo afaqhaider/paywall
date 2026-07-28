@@ -64,8 +64,11 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const pair = await this.authService.login(dto, extractRequestMeta(req));
-    return respondWithTokenPair(res, pair);
+    const result = await this.authService.login(dto, extractRequestMeta(req));
+    if ("twoFactorRequired" in result) {
+      return result;
+    }
+    return respondWithTokenPair(res, result);
   }
 
   @Public()
