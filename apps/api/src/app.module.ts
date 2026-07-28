@@ -43,6 +43,9 @@ import { FinancialEventsModule } from "./financial-events/financial-events.modul
 import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
 import { TwoFactorModule } from "./two-factor/two-factor.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { AdminDirectoryModule } from "./admin-directory/admin-directory.module";
+import { AdminAuditModule } from "./admin-audit/admin-audit.module";
+import { AdminReportsModule } from "./admin-reports/admin-reports.module";
 
 @Module({
   imports: [
@@ -112,6 +115,9 @@ import { NotificationsModule } from "./notifications/notifications.module";
     CustomerPortalModule,
     TwoFactorModule,
     NotificationsModule,
+    AdminDirectoryModule,
+    AdminAuditModule,
+    AdminReportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
