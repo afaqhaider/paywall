@@ -37,6 +37,8 @@ import { OAuthModule } from "./oauth/oauth.module";
 import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { SdkConfigModule } from "./sdk-config/sdk-config.module";
+import { ErpConnectorModule } from "./erp-connector/erp-connector.module";
+import { FinancialEventsModule } from "./financial-events/financial-events.module";
 
 @Module({
   imports: [
@@ -100,6 +102,8 @@ import { SdkConfigModule } from "./sdk-config/sdk-config.module";
     DeveloperWebhooksModule,
     AnalyticsModule,
     SdkConfigModule,
+    ErpConnectorModule,
+    FinancialEventsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
