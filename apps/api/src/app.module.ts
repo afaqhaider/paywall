@@ -48,6 +48,9 @@ import { AdminOrganizationsModule } from "./admin-organizations/admin-organizati
 import { AdminApplicationsModule } from "./admin-applications/admin-applications.module";
 import { AdminCustomersModule } from "./admin-customers/admin-customers.module";
 import { AdminSupportModule } from "./admin-support/admin-support.module";
+import { AdminDirectoryModule } from "./admin-directory/admin-directory.module";
+import { AdminAuditModule } from "./admin-audit/admin-audit.module";
+import { AdminReportsModule } from "./admin-reports/admin-reports.module";
 
 @Module({
   imports: [
@@ -122,6 +125,9 @@ import { AdminSupportModule } from "./admin-support/admin-support.module";
     AdminApplicationsModule,
     AdminCustomersModule,
     AdminSupportModule,
+    AdminDirectoryModule,
+    AdminAuditModule,
+    AdminReportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
