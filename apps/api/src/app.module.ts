@@ -37,6 +37,7 @@ import { OAuthModule } from "./oauth/oauth.module";
 import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { SdkConfigModule } from "./sdk-config/sdk-config.module";
+import { FinancialIntegrationModule } from "./financial-integration/financial-integration.module";
 
 @Module({
   imports: [
@@ -100,6 +101,7 @@ import { SdkConfigModule } from "./sdk-config/sdk-config.module";
     DeveloperWebhooksModule,
     AnalyticsModule,
     SdkConfigModule,
+    FinancialIntegrationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
