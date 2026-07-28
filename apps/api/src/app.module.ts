@@ -43,6 +43,20 @@ import { FinancialEventsModule } from "./financial-events/financial-events.modul
 import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
 import { TwoFactorModule } from "./two-factor/two-factor.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { PlatformAdminModule } from "./platform-admin/platform-admin.module";
+import { AdminOrganizationsModule } from "./admin-organizations/admin-organizations.module";
+import { AdminApplicationsModule } from "./admin-applications/admin-applications.module";
+import { AdminCustomersModule } from "./admin-customers/admin-customers.module";
+import { AdminSupportModule } from "./admin-support/admin-support.module";
+import { AdminDirectoryModule } from "./admin-directory/admin-directory.module";
+import { AdminAuditModule } from "./admin-audit/admin-audit.module";
+import { AdminReportsModule } from "./admin-reports/admin-reports.module";
+import { AdminSubscriptionsModule } from "./admin-subscriptions/admin-subscriptions.module";
+import { AdminLicensesModule } from "./admin-licenses/admin-licenses.module";
+import { AdminFinancialModule } from "./admin-financial/admin-financial.module";
+import { AdminMonitoringModule } from "./admin-monitoring/admin-monitoring.module";
+import { AdminFraudModule } from "./admin-fraud/admin-fraud.module";
+import { AdminConfigModule } from "./admin-config/admin-config.module";
 
 @Module({
   imports: [
@@ -112,6 +126,20 @@ import { NotificationsModule } from "./notifications/notifications.module";
     CustomerPortalModule,
     TwoFactorModule,
     NotificationsModule,
+    PlatformAdminModule,
+    AdminOrganizationsModule,
+    AdminApplicationsModule,
+    AdminCustomersModule,
+    AdminSupportModule,
+    AdminDirectoryModule,
+    AdminAuditModule,
+    AdminReportsModule,
+    AdminSubscriptionsModule,
+    AdminLicensesModule,
+    AdminFinancialModule,
+    AdminMonitoringModule,
+    AdminFraudModule,
+    AdminConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

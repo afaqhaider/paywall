@@ -35,6 +35,7 @@ enum ApplicationMemberRole {
 enum ApplicationStatus {
   ACTIVE
   ARCHIVED
+  SUSPENDED
 }
 
 enum ApplicationVisibility {
@@ -296,6 +297,43 @@ enum DeviceStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 9: Platform Administration & Operations Center
+// ---------------------------------------------------------------------------
+
+enum PlatformAdminRole {
+  SUPER_ADMIN
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+  DELETED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AnnouncementType {
+  MAINTENANCE
+  INCIDENT
+  FEATURE_RELEASE
+  GENERAL_NOTICE
+}
+
+enum MessageTemplateType {
+  EMAIL
+  NOTIFICATION
+}
+
+enum ImpersonationTargetRole {
+  CUSTOMER
+  DEVELOPER
+}
+
+// ---------------------------------------------------------------------------
 // Phase 8: Customer Portal & Financial Integration
 // ---------------------------------------------------------------------------
 
@@ -489,6 +527,34 @@ enum AuditAction {
   TWO_FACTOR_ENABLED
   TWO_FACTOR_DISABLED
   SUBSCRIPTION_SELF_SERVICE_ACTION
+  PLATFORM_ADMIN_GRANTED
+  PLATFORM_ADMIN_REVOKED
+  ORGANIZATION_SUSPENDED
+  ORGANIZATION_REACTIVATED
+  ORGANIZATION_ARCHIVED
+  ORGANIZATION_SOFT_DELETED
+  ORGANIZATION_OWNERSHIP_TRANSFERRED
+  APPLICATION_SUSPENDED_BY_ADMIN
+  APPLICATION_MOVED_TO_ORGANIZATION
+  CUSTOMER_SUSPENDED
+  CUSTOMER_REACTIVATED
+  CUSTOMER_FORCE_LOGOUT
+  CUSTOMER_2FA_RESET_BY_ADMIN
+  ADMIN_IMPERSONATION_STARTED
+  ADMIN_IMPERSONATION_ENDED
+  ADMIN_LOGIN_LINK_GENERATED
+  ADMIN_ACCOUNT_UNLOCKED
+  ADMIN_PASSWORD_RESET
+  ADMIN_SESSIONS_INVALIDATED
+  SUBSCRIPTION_ADMIN_ACTION
+  LICENSE_ADMIN_ACTION
+  PLATFORM_SETTING_UPDATED
+  FEATURE_FLAG_UPDATED
+  MESSAGE_TEMPLATE_UPDATED
+  ANNOUNCEMENT_CREATED
+  ANNOUNCEMENT_UPDATED
+  ANNOUNCEMENT_DELETED
+  FINANCIAL_SYNC_ADMIN_RETRIED
 }
 
 // ---------------------------------------------------------------------------
@@ -1027,6 +1093,15 @@ model User {
   resolvedSyncErrors           SyncError[]
   financialIntegrations        FinancialIntegration[]
   erpconnections               ERPConnection[]
+  platformAdmin                PlatformAdmin?
+  grantedPlatformAdmins        PlatformAdmin[]          @relation("PlatformAdminGrantedBy")
+  revokedPlatformAdmins        PlatformAdmin[]          @relation("PlatformAdminRevokedBy")
+  adminImpersonationsStarted   ImpersonationSession[]   @relation("ImpersonationAdmin")
+  impersonationsReceived       ImpersonationSession[]   @relation("ImpersonationTarget")
+  updatedPlatformSettings      PlatformSetting[]
+  updatedFeatureFlags          FeatureFlag[]
+  updatedMessageTemplates      MessageTemplate[]
+  createdAnnouncements         PlatformAnnouncement[]
 
   @@map("users")
 }
@@ -1082,6 +1157,12 @@ model Organization {
   slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  status           OrganizationStatus @default(ACTIVE)
+  suspendedAt      DateTime?
+  suspensionReason String?
+  archivedAt       DateTime?
+  deletedAt        DateTime?
 
   members              OrganizationMember[]
   auditLogs            AuditLog[]
@@ -1524,7 +1605,9 @@ model Customer {
   userId         String?
   user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  type        CustomerType @default(INDIVIDUAL)
+  type        CustomerType   @default(INDIVIDUAL)
+  status      CustomerStatus @default(ACTIVE)
+  suspendedAt DateTime?
   displayName String?
   email       String?
   externalIds Json?
@@ -2840,4 +2923,148 @@ model Notification {
   @@index([userId])
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+// =====================================================================
+// Phase 9: Platform Administration & Operations Center
+// The Super Admin's authority is a single new model (`PlatformAdmin`),
+// deliberately separate from `OrganizationRole`/`ApplicationMemberRole` -
+// platform administration is cross-organization by definition, so it
+// cannot be expressed as a role *within* an org/app the way every prior
+// phase's permissions were. Almost everything else this phase needs is a
+// READ surface over models that already exist (Organization,
+// Application, Customer, Subscription, License, FinancialIntegration,
+// APIKey, WebhookEndpoint, DeviceRegistration, EntitlementGrant,
+// AuditLog, ...) - there is deliberately no new "AdminAuditLog" (the
+// existing AuditLog/AuditAction is reused, exactly like every prior
+// phase's audit reuse decision) and no new per-domain "admin view"
+// tables. The only genuinely new state this phase introduces is: who is
+// an admin, impersonation sessions, global platform configuration, and
+// announcements.
+// =====================================================================
+
+/// Grants a User cross-organization Super Admin authority. Revoking sets
+/// `revokedAt`/`revokedById` rather than deleting the row, preserving a
+/// permanent grant/revoke history for the audit trail.
+model PlatformAdmin {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role PlatformAdminRole @default(SUPER_ADMIN)
+
+  grantedById String
+  grantedBy   User     @relation("PlatformAdminGrantedBy", fields: [grantedById], references: [id])
+  grantedAt   DateTime @default(now())
+
+  revokedById String?
+  revokedBy   User?     @relation("PlatformAdminRevokedBy", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokedAt   DateTime?
+
+  @@map("platform_admins")
+}
+
+/// A support-tool impersonation ("login as this customer/developer") or a
+/// standalone "generate login link" grant - both are the same underlying
+/// mechanism (a one-shot, short-lived, hashed token identifying the admin
+/// and the target user), so one model covers "Impersonate customer",
+/// "Impersonate developer", "Generate login link", and "Impersonation
+/// history" at once. Hashed the same way as every other one-shot token in
+/// this codebase (EmailVerificationToken, DeveloperInvitation, ...).
+model ImpersonationSession {
+  id           String @id @default(uuid())
+  adminUserId  String
+  admin        User   @relation("ImpersonationAdmin", fields: [adminUserId], references: [id])
+  targetUserId String
+  target       User   @relation("ImpersonationTarget", fields: [targetUserId], references: [id])
+
+  targetRole ImpersonationTargetRole
+  tokenHash  String                  @unique
+  reason     String?
+
+  ipAddress String?
+  userAgent String?
+
+  startedAt DateTime  @default(now())
+  expiresAt DateTime
+  endedAt   DateTime?
+
+  @@index([adminUserId])
+  @@index([targetUserId])
+  @@map("impersonation_sessions")
+}
+
+/// Generic key/value platform configuration (branding, maintenance mode,
+/// supported currencies/languages, subscription defaults, default quotas)
+/// - deliberately one flexible table rather than a bespoke column per
+/// setting, the same "ApplicationSetting" pattern App Registry already
+/// established for per-application settings, applied at the platform level.
+model PlatformSetting {
+  id  String @id @default(uuid())
+  key String @unique
+
+  value Json
+
+  updatedById String
+  updatedBy   User     @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("platform_settings")
+}
+
+model FeatureFlag {
+  id  String @id @default(uuid())
+  key String @unique
+
+  enabled           Boolean @default(false)
+  description       String?
+  rolloutPercentage Int?
+
+  updatedById String
+  updatedBy   User     @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("feature_flags")
+}
+
+/// Email templates (subject + body) and in-app notification templates
+/// (body only) share this one model, differentiated by `type` - both are
+/// "a key identifying which message this is, plus editable copy".
+model MessageTemplate {
+  id   String              @id @default(uuid())
+  type MessageTemplateType
+  key  String
+
+  subject String?
+  body    String
+
+  updatedById String
+  updatedBy   User     @relation(fields: [updatedById], references: [id])
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([type, key])
+  @@map("message_templates")
+}
+
+model PlatformAnnouncement {
+  id   String           @id @default(uuid())
+  type AnnouncementType
+
+  title String
+  body  String
+
+  scheduledAt DateTime?
+  expiresAt   DateTime?
+  publishedAt DateTime?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([type])
+  @@map("platform_announcements")
 }
