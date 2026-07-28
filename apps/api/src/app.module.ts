@@ -57,6 +57,12 @@ import { AdminFinancialModule } from "./admin-financial/admin-financial.module";
 import { AdminMonitoringModule } from "./admin-monitoring/admin-monitoring.module";
 import { AdminFraudModule } from "./admin-fraud/admin-fraud.module";
 import { AdminConfigModule } from "./admin-config/admin-config.module";
+import { BackgroundJobsModule } from "./background-jobs/background-jobs.module";
+import { PlatformEventsModule } from "./platform-events/platform-events.module";
+import { SchedulerModule } from "./scheduler/scheduler.module";
+import { AutomationModule } from "./automation/automation.module";
+import { NotificationsEngineModule } from "./notifications-engine/notifications-engine.module";
+import { SystemHealthModule } from "./system-health/system-health.module";
 
 @Module({
   imports: [
@@ -140,6 +146,12 @@ import { AdminConfigModule } from "./admin-config/admin-config.module";
     AdminMonitoringModule,
     AdminFraudModule,
     AdminConfigModule,
+    BackgroundJobsModule,
+    PlatformEventsModule,
+    SchedulerModule,
+    NotificationsEngineModule,
+    AutomationModule,
+    SystemHealthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

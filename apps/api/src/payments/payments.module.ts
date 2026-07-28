@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
 import { FinancialEventsModule } from "../financial-events/financial-events.module";
+import { PlatformEventsModule } from "../platform-events/platform-events.module";
 import {
   ProvidersController,
   ProviderAccountsController,
@@ -39,7 +40,7 @@ import { PaymentMethodsController } from "./payment-methods.controller";
 import { PaymentMethodsService } from "./payment-methods.service";
 
 @Module({
-  imports: [SubscriptionsModule, FinancialEventsModule],
+  imports: [SubscriptionsModule, FinancialEventsModule, PlatformEventsModule],
   controllers: [
     ProvidersController,
     ProviderAccountsController,

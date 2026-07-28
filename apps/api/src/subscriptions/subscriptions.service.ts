@@ -4,6 +4,7 @@ import type {
   Subscription,
   SubscriptionStatus,
   SubscriptionEventType,
+  PlatformEventType,
 } from "@prisma/client";
 import {
   ApplicationEnvironmentType,
@@ -34,6 +35,7 @@ import type { MutationOptionsDto } from "./dto/mutation-options.dto";
 import type { RedeemCouponDto } from "../coupons/dto/redeem-coupon.dto";
 import { CouponsService } from "../coupons/coupons.service";
 import { FinancialEventsService } from "../financial-events/financial-events.service";
+import { PlatformEventsService } from "../platform-events/platform-events.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -46,11 +48,23 @@ interface TransitionResult {
 
 @Injectable()
 export class SubscriptionsService {
+  private static readonly SUBSCRIPTION_EVENT_TO_PLATFORM_EVENT: Partial<
+    Record<SubscriptionEventType, PlatformEventType>
+  > = {
+    ACTIVATED: "SUBSCRIPTION_ACTIVATED",
+    RENEWED: "SUBSCRIPTION_RENEWED",
+    CANCELED: "SUBSCRIPTION_CANCELLED",
+    EXPIRED: "SUBSCRIPTION_EXPIRED",
+    TRIAL_CONVERTED: "SUBSCRIPTION_ACTIVATED",
+    TRIAL_EXPIRED: "TRIAL_ENDED",
+  };
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly couponsService: CouponsService,
     private readonly financialEventsService: FinancialEventsService,
+    private readonly platformEventsService: PlatformEventsService,
   ) {}
 
   async create(
@@ -151,6 +165,24 @@ export class SubscriptionsService {
       metadata: { subscriptionId: subscription.id, customerId: dto.customerId, planId: dto.planId },
       ...meta,
     });
+
+    const refs = {
+      organizationId,
+      applicationId: plan.product.applicationId,
+      customerId: dto.customerId,
+    };
+    await this.platformEventsService.publish(
+      "SUBSCRIPTION_CREATED",
+      { subscriptionId: subscription.id, planId: dto.planId, startTrial },
+      refs,
+    );
+    if (startTrial) {
+      await this.platformEventsService.publish(
+        "TRIAL_STARTED",
+        { subscriptionId: subscription.id, planId: dto.planId },
+        refs,
+      );
+    }
 
     return subscription;
   }
@@ -805,7 +837,9 @@ export class SubscriptionsService {
       subscription: Subscription & { trial: { id: string } | null },
     ) => Promise<TransitionResult>,
   ): Promise<Subscription> {
-    return this.prisma.$transaction(async (tx) => {
+    let publishedEventType: SubscriptionEventType | undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       const subscription = await tx.subscription.findUnique({
         where: { id: subscriptionId },
         include: { trial: { select: { id: true } } },
@@ -836,7 +870,7 @@ export class SubscriptionsService {
 
       assertTransition(subscription.status, toStatus);
 
-      const updated = await tx.subscription.update({
+      const result = await tx.subscription.update({
         where: { id: subscriptionId },
         data: { ...data, status: toStatus, version: { increment: 1 } },
       });
@@ -853,8 +887,29 @@ export class SubscriptionsService {
         },
       });
 
-      return updated;
+      publishedEventType = eventType;
+      return result;
     });
+
+    // Published AFTER the transaction commits - `publish()` does its own
+    // writes (PlatformEvent + BackgroundJob rows) and must never run nested
+    // inside this transaction's connection.
+    const platformEventType = publishedEventType
+      ? SubscriptionsService.SUBSCRIPTION_EVENT_TO_PLATFORM_EVENT[publishedEventType]
+      : undefined;
+    if (platformEventType) {
+      await this.platformEventsService.publish(
+        platformEventType,
+        { subscriptionId, eventType: publishedEventType, toStatus: updated.status },
+        {
+          organizationId: updated.organizationId,
+          applicationId: updated.applicationId,
+          customerId: updated.customerId,
+        },
+      );
+    }
+
+    return updated;
   }
 }
 

@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { SystemActorService } from "./system-actor.service";
 import { FinancialEventsService } from "../financial-events/financial-events.service";
+import { PlatformEventsService } from "../platform-events/platform-events.service";
 import type { NormalizedPaymentEvent } from "./adapters/payment-provider.adapter";
 
 const SYSTEM_META = {};
@@ -51,6 +52,7 @@ export class PaymentEventDispatcherService {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly systemActor: SystemActorService,
     private readonly financialEventsService: FinancialEventsService,
+    private readonly platformEventsService: PlatformEventsService,
   ) {}
 
   async dispatch(
@@ -104,6 +106,19 @@ export class PaymentEventDispatcherService {
               subscription,
               preStatus,
             );
+            await this.platformEventsService.publish(
+              "PAYMENT_SUCCEEDED",
+              {
+                transactionId: transaction.id,
+                amountMinor: transaction.amountMinor,
+                currency: transaction.currency,
+              },
+              {
+                organizationId,
+                applicationId: subscription?.applicationId,
+                customerId: transaction.customerId,
+              },
+            );
           }
           break;
         }
@@ -139,6 +154,19 @@ export class PaymentEventDispatcherService {
               systemUserId,
               SYSTEM_META,
               `payment_failed:${transaction.id}:${event.externalEventId}`,
+            );
+            await this.platformEventsService.publish(
+              "PAYMENT_FAILED",
+              {
+                transactionId: transaction.id,
+                amountMinor: transaction.amountMinor,
+                currency: transaction.currency,
+              },
+              {
+                organizationId,
+                applicationId: subscription?.applicationId,
+                customerId: transaction.customerId,
+              },
             );
           }
           break;
@@ -416,6 +444,16 @@ export class PaymentEventDispatcherService {
       SYSTEM_META,
       `refund:${refund.id}`,
     );
+
+    await this.platformEventsService.publish(
+      "REFUND_CREATED",
+      { transactionId: transaction.id, refundId: refund.id, amountMinor: refundAmount },
+      {
+        organizationId,
+        applicationId: subscription?.applicationId,
+        customerId: transaction.customerId,
+      },
+    );
   }
 
   private async applyChargeback(
@@ -455,6 +493,16 @@ export class PaymentEventDispatcherService {
       systemUserId,
       SYSTEM_META,
       `chargeback:${dispute.id}`,
+    );
+
+    await this.platformEventsService.publish(
+      "CHARGEBACK_CREATED",
+      { transactionId: transaction.id, disputeId: dispute.id, amountMinor: dispute.amountMinor },
+      {
+        organizationId,
+        applicationId: subscription?.applicationId,
+        customerId: transaction.customerId,
+      },
     );
   }
 

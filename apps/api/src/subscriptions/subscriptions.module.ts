@@ -6,9 +6,10 @@ import {
 import { SubscriptionsService } from "./subscriptions.service";
 import { CouponsModule } from "../coupons/coupons.module";
 import { FinancialEventsModule } from "../financial-events/financial-events.module";
+import { PlatformEventsModule } from "../platform-events/platform-events.module";
 
 @Module({
-  imports: [CouponsModule, FinancialEventsModule],
+  imports: [CouponsModule, FinancialEventsModule, PlatformEventsModule],
   controllers: [SubscriptionsController, SubscriptionLifecycleController],
   providers: [SubscriptionsService],
   exports: [SubscriptionsService],

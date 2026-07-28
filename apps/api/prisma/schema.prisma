@@ -555,6 +555,342 @@ enum AuditAction {
   ANNOUNCEMENT_UPDATED
   ANNOUNCEMENT_DELETED
   FINANCIAL_SYNC_ADMIN_RETRIED
+  AUTOMATION_RULE_CREATED
+  AUTOMATION_RULE_UPDATED
+  AUTOMATION_RULE_TOGGLED
+  NOTIFICATION_TEMPLATE_CREATED
+  NOTIFICATION_TEMPLATE_UPDATED
+  BACKGROUND_JOB_RETRIED
+  BACKGROUND_JOB_CANCELLED
+  QUEUE_PAUSED
+  QUEUE_RESUMED
+  AUTOMATION_ACTION_LOGGED
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10: Platform Automation, Events & Background Services
+// ---------------------------------------------------------------------------
+// This phase is purely additive - it does not change how any existing
+// service does its own work (Phase 4-9's direct calls, e.g.
+// PaymentEventDispatcherService -> FinancialEventsService, keep working
+// exactly as before). What it adds: every one of those existing call sites
+// ALSO publishes a `PlatformEvent` (see `PlatformEventsService.publish`),
+// which is the durable, searchable "Event Bus" record and the trigger for
+// `AutomationRule`s. An automation rule's action chain runs asynchronously
+// via `BackgroundJob` (never inline on the request path), giving the
+// Event -> Queue -> Worker -> Result traceability the spec asks for
+// without touching any already-shipped business logic.
+
+enum PlatformEventType {
+  USER_CREATED
+  ORGANIZATION_CREATED
+  ORGANIZATION_SUSPENDED
+  APPLICATION_CREATED
+  APPLICATION_ARCHIVED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_EXPIRED
+  TRIAL_STARTED
+  TRIAL_ENDED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  REFUND_CREATED
+  CHARGEBACK_CREATED
+  INVOICE_CREATED
+  RECEIPT_CREATED
+  LICENSE_CREATED
+  LICENSE_ACTIVATED
+  LICENSE_REVOKED
+  DEVICE_REGISTERED
+  DEVICE_REMOVED
+  API_KEY_CREATED
+  WEBHOOK_CREATED
+  WEBHOOK_DELIVERED
+  FINANCIAL_SYNC_STARTED
+  FINANCIAL_SYNC_SUCCEEDED
+  FINANCIAL_SYNC_FAILED
+  ERP_CONNECTED
+  ERP_DISCONNECTED
+  NOTIFICATION_REQUESTED
+}
+
+enum PlatformEventStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+}
+
+/// The durable Event Bus record. Every important business action publishes
+/// one of these (see `PlatformEventsService.publish`); `status` reflects
+/// whether its matching `AutomationRule`s finished dispatching (dispatch
+/// itself always happens via `BackgroundJob`, never synchronously here).
+model PlatformEvent {
+  id             String              @id @default(uuid())
+  type           PlatformEventType
+  payload        Json
+  correlationId  String?
+  organizationId String?
+  applicationId  String?
+  customerId     String?
+  status         PlatformEventStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  jobs               BackgroundJob[]
+  automationRuleRuns AutomationRuleExecution[]
+
+  @@index([type])
+  @@index([organizationId])
+  @@index([applicationId])
+  @@index([customerId])
+  @@index([correlationId])
+  @@index([status])
+  @@map("platform_events")
+}
+
+enum JobStatus {
+  PENDING
+  SCHEDULED
+  PROCESSING
+  SUCCESS
+  RETRYING
+  FAILED
+  DEAD_LETTER
+  CANCELLED
+}
+
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+/// The generic background job every worker-driven feature in this phase
+/// runs through - queued/immediate (`runAt` null or due), delayed (`runAt`
+/// in the future), recurring (`cron` set - the worker re-enqueues the next
+/// occurrence on completion), retryable with backoff, dead-letterable,
+/// priority-ordered, and cancellable. Mirrors the polling-sweep shape
+/// already used by `SyncEngineService`/`WebhookDispatchService` in earlier
+/// phases, generalized into one reusable queue.
+model BackgroundJob {
+  id       String      @id @default(uuid())
+  type     String // processor key, e.g. "AUTOMATION_RULE_EXECUTION", "SCHEDULED:trial-expiration"
+  payload  Json
+  priority JobPriority @default(NORMAL)
+  status   JobStatus   @default(PENDING)
+
+  queueName String @default("default")
+
+  runAt         DateTime? // null = due immediately
+  cron          String? // set = recurring; re-enqueued on completion
+  attemptCount  Int       @default(0)
+  maxAttempts   Int       @default(5)
+  nextAttemptAt DateTime?
+  error         String?
+  correlationId String?
+
+  sourceEventId String?
+  sourceEvent   PlatformEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  history JobHistoryEntry[]
+
+  @@index([status])
+  @@index([queueName])
+  @@index([nextAttemptAt])
+  @@index([priority])
+  @@index([correlationId])
+  @@map("background_jobs")
+}
+
+/// One row per job attempt - the audit trail behind "Inspect history".
+model JobHistoryEntry {
+  id              String        @id @default(uuid())
+  backgroundJobId String
+  backgroundJob   BackgroundJob @relation(fields: [backgroundJobId], references: [id], onDelete: Cascade)
+
+  attemptNumber Int
+  status        JobStatus
+  error         String?
+  durationMs    Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([backgroundJobId])
+  @@map("job_history_entries")
+}
+
+/// One ordered step in an AutomationRule's action chain, e.g.
+/// `{ "action": "RECORD_FINANCIAL_EVENT" }`, `{ "action": "SEND_NOTIFICATION", "category": "SUBSCRIPTION_RENEWED" }`.
+/// Interpreted by the fixed set of action handlers in
+/// `AutomationActionExecutorService` - free-form Json since the action
+/// vocabulary is expected to grow without a schema migration each time.
+model AutomationRule {
+  id               String            @id @default(uuid())
+  name             String
+  description      String?
+  triggerEventType PlatformEventType
+  enabled          Boolean           @default(true)
+  actions          Json // ordered array of action descriptors
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions AutomationRuleExecution[]
+
+  @@index([triggerEventType])
+  @@index([enabled])
+  @@map("automation_rules")
+}
+
+enum AutomationRunStatus {
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+/// One row per time a rule actually ran for one `PlatformEvent` - traces
+/// Event -> Rule -> outcome, independent of the `BackgroundJob` retry
+/// mechanics that drove it.
+model AutomationRuleExecution {
+  id      String         @id @default(uuid())
+  ruleId  String
+  rule    AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  eventId String
+  event   PlatformEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  status      AutomationRunStatus
+  actionsRun  Int
+  error       String?
+  startedAt   DateTime            @default(now())
+  completedAt DateTime?
+
+  @@index([ruleId])
+  @@index([eventId])
+  @@map("automation_rule_executions")
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+  WEBHOOK
+  SMS
+}
+
+enum NotificationCategory {
+  WELCOME
+  PASSWORD_RESET
+  INVOICE
+  RECEIPT
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_EXPIRING
+  TRIAL_ENDING
+  PAYMENT_FAILED
+  ERP_SYNC_FAILED
+  PLATFORM_ANNOUNCEMENT
+  GENERAL
+}
+
+/// A reusable template for one category+channel combination. `bodyTemplate`
+/// uses simple `{{variable}}` interpolation (see
+/// `NotificationTemplateRenderer`) - no external templating engine
+/// dependency.
+model NotificationTemplate {
+  id           String               @id @default(uuid())
+  key          String               @unique
+  category     NotificationCategory
+  channel      NotificationChannel
+  subject      String?
+  bodyTemplate String
+  isActive     Boolean              @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deliveries NotificationDelivery[]
+
+  @@index([category])
+  @@map("notification_templates")
+}
+
+/// One logical notification request - the single entry point every
+/// category above funnels through (`PlatformNotificationService.send`).
+/// Fans out into one `NotificationDelivery` per requested channel.
+model PlatformNotification {
+  id              String               @id @default(uuid())
+  category        NotificationCategory
+  recipientUserId String?
+  recipientUser   User?                @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  organizationId  String?
+  customerId      String?
+  payload         Json
+  correlationId   String?
+
+  createdAt DateTime @default(now())
+
+  deliveries NotificationDelivery[]
+
+  @@index([recipientUserId])
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([category])
+  @@map("platform_notifications")
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRYING
+}
+
+/// One channel-specific delivery attempt for a `PlatformNotification`.
+model NotificationDelivery {
+  id             String                @id @default(uuid())
+  notificationId String
+  notification   PlatformNotification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  templateId     String?
+  template       NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  channel      NotificationChannel
+  status       NotificationDeliveryStatus @default(PENDING)
+  attemptCount Int                        @default(0)
+  error        String?
+  sentAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([notificationId])
+  @@index([channel])
+  @@index([status])
+  @@map("notification_deliveries")
+}
+
+/// Admin pause/resume control for a named queue (`BackgroundJob.queueName`).
+/// The worker sweep skips any queue with a row here where `paused` is true.
+model QueueControl {
+  id         String    @id @default(uuid())
+  queueName  String    @unique
+  paused     Boolean   @default(false)
+  pausedAt   DateTime?
+  pausedById String?
+  pausedBy   User?     @relation(fields: [pausedById], references: [id], onDelete: SetNull)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("queue_controls")
 }
 
 // ---------------------------------------------------------------------------
@@ -1088,6 +1424,9 @@ model User {
   createdEnvironmentVariables  EnvironmentVariable[]
   createdOAuthApplications     OAuthApplication[]
   createdWebhookEndpoints      WebhookEndpoint[]
+  createdAutomationRules       AutomationRule[]
+  receivedNotifications        PlatformNotification[]
+  pausedQueues                 QueueControl[]
   twoFactorCredential          TwoFactorCredential?
   notifications                Notification[]
   resolvedSyncErrors           SyncError[]
