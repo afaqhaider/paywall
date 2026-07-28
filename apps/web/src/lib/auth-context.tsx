@@ -19,12 +19,26 @@ interface TokenResponse {
   user: PublicUser;
 }
 
+/** Returned instead of a token pair when the account has 2FA enabled - no
+ * cookie/session is established yet, the login page must collect a code and
+ * call `verifyTwoFactorLogin`. */
+interface TwoFactorChallengeResponse {
+  twoFactorRequired: true;
+  challengeToken: string;
+}
+
+type LoginResponse = TokenResponse | TwoFactorChallengeResponse;
+
+export type LoginResult =
+  { twoFactorRequired: false } | { twoFactorRequired: true; challengeToken: string };
+
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 interface AuthContextValue {
   status: AuthStatus;
   user: PublicUser | null;
-  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
+  verifyTwoFactorLogin: (challengeToken: string, code: string) => Promise<void>;
   register: (
     email: string,
     password: string,
@@ -74,10 +88,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshSession]);
 
   const login = useCallback(
-    async (email: string, password: string, rememberMe = false) => {
-      const token = await apiFetch<TokenResponse>("/auth/login", {
+    async (email: string, password: string, rememberMe = false): Promise<LoginResult> => {
+      const response = await apiFetch<LoginResponse>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password, rememberMe }),
+      });
+      if ("twoFactorRequired" in response) {
+        return { twoFactorRequired: true, challengeToken: response.challengeToken };
+      }
+      applySession(response);
+      return { twoFactorRequired: false };
+    },
+    [applySession],
+  );
+
+  const verifyTwoFactorLogin = useCallback(
+    async (challengeToken: string, code: string): Promise<void> => {
+      const token = await apiFetch<TokenResponse>("/auth/2fa/verify-login", {
+        method: "POST",
+        body: JSON.stringify({ challengeToken, code }),
       });
       applySession(token);
     },
@@ -124,13 +153,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       user,
       login,
+      verifyTwoFactorLogin,
       register,
       logout,
       refreshSession,
       authedFetch,
       setUser: setUserState,
     }),
-    [status, user, login, register, logout, refreshSession, authedFetch],
+    [status, user, login, verifyTwoFactorLogin, register, logout, refreshSession, authedFetch],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
