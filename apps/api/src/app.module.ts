@@ -29,6 +29,8 @@ import { SeatsModule } from "./seats/seats.module";
 import { UsageLimitsModule } from "./usage-limits/usage-limits.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { DevicesModule } from "./devices/devices.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
+import { SdkConfigModule } from "./sdk-config/sdk-config.module";
 
 @Module({
   imports: [
@@ -84,6 +86,8 @@ import { DevicesModule } from "./devices/devices.module";
     UsageLimitsModule,
     ApiKeysModule,
     DevicesModule,
+    AnalyticsModule,
+    SdkConfigModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
