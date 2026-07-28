@@ -24,6 +24,9 @@ import { TrialsModule } from "./trials/trials.module";
 import { UsageModule } from "./usage/usage.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { EntitlementsModule } from "./entitlements/entitlements.module";
+import { UsageLimitsModule } from "./usage-limits/usage-limits.module";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
+import { DevicesModule } from "./devices/devices.module";
 
 @Module({
   imports: [
@@ -74,6 +77,9 @@ import { EntitlementsModule } from "./entitlements/entitlements.module";
     UsageModule,
     PaymentsModule,
     EntitlementsModule,
+    UsageLimitsModule,
+    ApiKeysModule,
+    DevicesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
