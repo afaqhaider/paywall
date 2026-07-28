@@ -34,6 +34,7 @@ import { InvitationsModule } from "./invitations/invitations.module";
 import { EnvironmentVariablesModule } from "./environment-variables/environment-variables.module";
 import { AllowedOriginsModule } from "./allowed-origins/allowed-origins.module";
 import { OAuthModule } from "./oauth/oauth.module";
+import { DeveloperWebhooksModule } from "./webhooks/webhooks.module";
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { OAuthModule } from "./oauth/oauth.module";
     EnvironmentVariablesModule,
     AllowedOriginsModule,
     OAuthModule,
+    DeveloperWebhooksModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
