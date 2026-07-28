@@ -6,8 +6,9 @@ const ROLE_RANK: Record<ApplicationMemberRole, number> = {
   SUPPORT: 1,
   TESTER: 1,
   DEVELOPER: 2,
-  ADMINISTRATOR: 3,
-  OWNER: 4,
+  MAINTAINER: 3,
+  ADMINISTRATOR: 4,
+  OWNER: 5,
 };
 
 export function roleAtLeast(role: ApplicationMemberRole, minimum: ApplicationMemberRole): boolean {
