@@ -12,32 +12,12 @@ import { AuditService } from "../audit/audit.service";
 import { decryptSecret } from "../common/utils/encryption.util";
 import { LedgixErpConnectorService } from "../erp-connector/ledgix-erp-connector.service";
 import type { ERPConnectionCredentials } from "../erp-connector/erp-connection-credentials.interface";
+import { readPayloadFields } from "./financial-event-payload.util";
 
 const MAX_ATTEMPTS = 5;
 const MAX_BACKOFF_MINUTES = 60;
 const SWEEP_INTERVAL_MS = 30_000;
 const SWEEP_BATCH_SIZE = 20;
-
-/** Fields this engine expects to find on `FinancialEvent.payload` for the
- * event types that produce an ERP invoice/receipt/payment (see the
- * `EVENT_TYPES_REQUIRING_ERP_CHARGE` list below). This is a documented
- * assumption about what callers of `FinancialEventsService.record()` put in
- * `payload` - not a Prisma-enforced shape, since `payload` is `Json`. */
-interface FinancialEventPayloadFields {
-  amountMinor?: number;
-  currency?: string;
-  description?: string;
-  customerReference?: string;
-  method?: string;
-  reference?: string;
-}
-
-function readPayloadFields(payload: Prisma.JsonValue): FinancialEventPayloadFields {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    return payload as FinancialEventPayloadFields;
-  }
-  return {};
-}
 
 /** Event types that represent a real charge and get a full LedGix
  * invoice -> receipt -> payment chain. Everything else is treated as
@@ -322,6 +302,8 @@ export class SyncEngineService implements OnModuleInit {
         amountMinor,
         currency,
         description: fields.description,
+        taxMinor: fields.taxMinor,
+        discountMinor: fields.discountMinor,
       },
       `${financialSyncId}:invoice`,
     );

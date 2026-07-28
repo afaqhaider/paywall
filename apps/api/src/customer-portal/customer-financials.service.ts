@@ -22,6 +22,16 @@ import {
 import { CustomerOwnershipService } from "./customer-ownership.service";
 import type { FinancialListQueryDto } from "./dto/financial-list-query.dto";
 import type { TransactionListQueryDto } from "./dto/transaction-list-query.dto";
+import { generateInvoicePdf, generateReceiptPdf } from "./financial-documents/financial-pdf.util";
+import { readPayloadFields } from "../financial-events/financial-event-payload.util";
+
+export interface RenderedDocument {
+  filename: string;
+  contentType: "application/pdf";
+  base64: string;
+}
+
+export type DownloadResult = { url: string } | RenderedDocument;
 
 type SyncWithEvent = FinancialSync & { financialEvent: FinancialEvent };
 
@@ -88,7 +98,21 @@ export class CustomerFinancialsService {
     return { ...page, source: "LEDGIX_ERP" as const, items: page.items.map(mapErpInvoice) };
   }
 
-  async downloadInvoice(customerId: string, invoiceId: string, userId: string) {
+  /**
+   * INTERNAL mode: renders a production invoice PDF from `PaymentInvoice` +
+   * the subscription's plan/product for line-item description. LEDGIX_ERP
+   * mode: prefers a real PDF URL LedGix itself returned (cached in
+   * `financialEvent.payload`); otherwise renders a READ-ONLY copy from the
+   * cached `FinancialSync` fields (`erpInvoiceId`/`erpReferenceNumber`) -
+   * this never creates a second accounting invoice, only a display of the
+   * one LedGix already owns, and the LedGix document number is always
+   * shown on the rendered page.
+   */
+  async downloadInvoice(
+    customerId: string,
+    invoiceId: string,
+    userId: string,
+  ): Promise<DownloadResult> {
     const customer = await this.ownership.loadOwnedCustomer(customerId, userId);
     const mode = await this.resolveMode(customer.organizationId);
 
@@ -97,11 +121,44 @@ export class CustomerFinancialsService {
       if (!invoice || invoice.customerId !== customerId) {
         throw new NotFoundException("Invoice not found");
       }
-      // PaymentInvoice has no PDF/url field in this schema - an honest
-      // placeholder rather than a fabricated document.
+
+      const [organization, lineItem] = await Promise.all([
+        this.prisma.organization.findUniqueOrThrow({ where: { id: customer.organizationId } }),
+        this.describeSubscription(invoice.subscriptionId),
+      ]);
+
+      const quantity = lineItem?.quantity ?? 1;
+      const unitAmountMinor =
+        quantity > 0 ? Math.round(invoice.amountDueMinor / quantity) : invoice.amountDueMinor;
+
+      const pdf = await generateInvoicePdf({
+        documentNumber: `INV-${invoice.id.slice(0, 8).toUpperCase()}`,
+        company: { name: organization.name, reference: organization.id },
+        customer: { name: customer.displayName ?? "Customer", email: customer.email },
+        issuedAt: invoice.issuedAt ?? invoice.createdAt,
+        periodStart: invoice.periodStart,
+        periodEnd: invoice.periodEnd,
+        lineItems: [
+          {
+            description: lineItem?.description ?? "Subscription charge",
+            quantity,
+            unitAmountMinor,
+            amountMinor: invoice.amountDueMinor,
+          },
+        ],
+        subtotalMinor: invoice.amountDueMinor,
+        discountMinor: 0,
+        taxMinor: 0,
+        totalMinor: invoice.amountDueMinor,
+        currency: invoice.currency,
+        paymentStatus: invoice.status,
+        paymentReference: invoice.providerInvoiceId,
+      });
+
       return {
-        message: "PDF generation not yet implemented for internal invoices",
-        invoice: mapInternalInvoice(invoice),
+        filename: `invoice-${invoice.id}.pdf`,
+        contentType: "application/pdf",
+        base64: pdf.toString("base64"),
       };
     }
 
@@ -112,13 +169,140 @@ export class CustomerFinancialsService {
     if (!sync || sync.financialEvent.customerId !== customerId) {
       throw new NotFoundException("Invoice not found");
     }
+
     const url = extractUrl(sync.financialEvent.payload);
     if (url) {
       return { url };
     }
+
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: customer.organizationId },
+    });
+    const fields = readPayloadFields(sync.financialEvent.payload);
+    const pdf = await generateInvoicePdf({
+      documentNumber: `INV-${sync.id.slice(0, 8).toUpperCase()}`,
+      company: { name: organization.name, reference: organization.id },
+      customer: { name: customer.displayName ?? "Customer", email: customer.email },
+      issuedAt: sync.createdAt,
+      lineItems: [
+        {
+          description: fields.description ?? "Subscription charge",
+          quantity: 1,
+          unitAmountMinor: fields.amountMinor ?? 0,
+          amountMinor: fields.amountMinor ?? 0,
+        },
+      ],
+      subtotalMinor: fields.amountMinor ?? 0,
+      discountMinor: fields.discountMinor ?? 0,
+      taxMinor: fields.taxMinor ?? 0,
+      totalMinor: (fields.amountMinor ?? 0) + (fields.taxMinor ?? 0) - (fields.discountMinor ?? 0),
+      currency: fields.currency ?? "USD",
+      paymentStatus: sync.status,
+      paymentReference: fields.reference,
+      erpDocumentNumber: sync.erpReferenceNumber ?? sync.erpInvoiceId,
+    });
+
     return {
-      message: "PDF generation not yet implemented for internal invoices",
-      invoice: mapErpInvoice(sync),
+      filename: `invoice-${sync.id}.pdf`,
+      contentType: "application/pdf",
+      base64: pdf.toString("base64"),
+    };
+  }
+
+  /** Mirrors `downloadInvoice`'s INTERNAL/LEDGIX_ERP split, for receipts. */
+  async downloadReceipt(
+    customerId: string,
+    receiptId: string,
+    userId: string,
+  ): Promise<DownloadResult> {
+    const customer = await this.ownership.loadOwnedCustomer(customerId, userId);
+    const mode = await this.resolveMode(customer.organizationId);
+
+    if (mode === FinancialProviderType.INTERNAL) {
+      const receipt = await this.prisma.paymentReceipt.findUnique({
+        where: { id: receiptId },
+        include: { transaction: true },
+      });
+      if (!receipt || receipt.transaction.customerId !== customerId) {
+        throw new NotFoundException("Receipt not found");
+      }
+      if (receipt.url) {
+        return { url: receipt.url };
+      }
+
+      const [organization, lineItem] = await Promise.all([
+        this.prisma.organization.findUniqueOrThrow({ where: { id: customer.organizationId } }),
+        this.describeSubscription(receipt.transaction.subscriptionId),
+      ]);
+
+      const pdf = await generateReceiptPdf({
+        documentNumber: receipt.receiptNumber,
+        company: { name: organization.name, reference: organization.id },
+        customer: { name: customer.displayName ?? "Customer", email: customer.email },
+        issuedAt: receipt.issuedAt,
+        description: lineItem?.description ?? "Subscription payment",
+        amountMinor: receipt.transaction.amountMinor,
+        currency: receipt.transaction.currency,
+        paymentStatus: receipt.transaction.status,
+        paymentReference: receipt.transaction.providerTransactionId,
+      });
+
+      return {
+        filename: `receipt-${receipt.id}.pdf`,
+        contentType: "application/pdf",
+        base64: pdf.toString("base64"),
+      };
+    }
+
+    const sync = await this.prisma.financialSync.findUnique({
+      where: { id: receiptId },
+      include: { financialEvent: true },
+    });
+    if (!sync || sync.financialEvent.customerId !== customerId) {
+      throw new NotFoundException("Receipt not found");
+    }
+
+    const url = extractUrl(sync.financialEvent.payload);
+    if (url) {
+      return { url };
+    }
+
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: customer.organizationId },
+    });
+    const fields = readPayloadFields(sync.financialEvent.payload);
+    const pdf = await generateReceiptPdf({
+      documentNumber: sync.erpReceiptId ?? `RCT-${sync.id.slice(0, 8).toUpperCase()}`,
+      company: { name: organization.name, reference: organization.id },
+      customer: { name: customer.displayName ?? "Customer", email: customer.email },
+      issuedAt: sync.createdAt,
+      description: fields.description ?? "Subscription payment",
+      amountMinor: fields.amountMinor ?? 0,
+      currency: fields.currency ?? "USD",
+      paymentStatus: sync.status,
+      paymentReference: fields.reference,
+      erpDocumentNumber: sync.erpReferenceNumber ?? sync.erpReceiptId,
+    });
+
+    return {
+      filename: `receipt-${sync.id}.pdf`,
+      contentType: "application/pdf",
+      base64: pdf.toString("base64"),
+    };
+  }
+
+  private async describeSubscription(
+    subscriptionId: string | null,
+  ): Promise<{ description: string; quantity: number } | null> {
+    if (!subscriptionId) return null;
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: { plan: { include: { product: true } } },
+    });
+    if (!subscription) return null;
+    return {
+      description: `${subscription.plan.product.name} - ${subscription.plan.name}`,
+      quantity: subscription.quantity,
     };
   }
 

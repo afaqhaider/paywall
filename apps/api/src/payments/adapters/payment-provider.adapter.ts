@@ -125,6 +125,8 @@ export interface NormalizedPaymentEvent {
   externalTransactionId?: string;
   amountMinor?: number;
   currency?: string;
+  /** Only set on `DISPUTE_UPDATED` - the dispute's new resolution, when the provider's payload carries one. `WON` means the merchant kept the funds (a chargeback reversal); `LOST` means the chargeback stands. */
+  disputeStatus?: "WON" | "LOST" | "UNDER_REVIEW";
   occurredAt: Date;
   raw: unknown;
 }

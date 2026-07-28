@@ -33,7 +33,7 @@ import type { ERPConnectionCredentials } from "./erp-connection-credentials.inte
  *     double-creating an invoice/receipt/payment.
  *
  * POST /api/{version}/invoices
- *   request:  { customerReference: string, amountMinor: number, currency: string, description?: string }
+ *   request:  { customerReference: string, amountMinor: number, currency: string, description?: string, taxMinor?: number, discountMinor?: number }
  *   response: { id: string, referenceNumber: string, status: "draft" | "open" }
  *
  * POST /api/{version}/invoices/{erpInvoiceId}/receipts
@@ -59,6 +59,10 @@ export interface CreateInvoiceData {
   amountMinor: number;
   currency: string;
   description?: string;
+  /** Always 0 today - no tax engine exists in this platform - carried through so the LedGix payload shape is ready for one. */
+  taxMinor?: number;
+  /** Best-effort sum of active SubscriptionCoupon discounts at the time this event was recorded. */
+  discountMinor?: number;
 }
 
 export interface CreateReceiptData {
@@ -157,6 +161,8 @@ export class LedgixErpConnectorService {
       amountMinor: data.amountMinor,
       currency: data.currency,
       description: data.description,
+      taxMinor: data.taxMinor ?? 0,
+      discountMinor: data.discountMinor ?? 0,
     };
   }
 

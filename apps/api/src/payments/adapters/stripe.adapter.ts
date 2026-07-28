@@ -307,6 +307,19 @@ export class StripeAdapter implements PaymentProviderAdapter {
             currency: object.currency as string | undefined,
           },
         ];
+      case "charge.dispute.closed": {
+        const status = object.status as string | undefined;
+        return [
+          {
+            ...base,
+            type: "DISPUTE_UPDATED",
+            externalTransactionId: object.payment_intent as string | undefined,
+            amountMinor: object.amount as number | undefined,
+            currency: object.currency as string | undefined,
+            disputeStatus: status === "won" ? "WON" : status === "lost" ? "LOST" : "UNDER_REVIEW",
+          },
+        ];
+      }
       default:
         return [{ ...base, type: "UNKNOWN" }];
     }

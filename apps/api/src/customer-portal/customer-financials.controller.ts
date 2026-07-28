@@ -36,6 +36,15 @@ export class CustomerFinancialsController {
     return this.financialsService.listReceipts(customerId, user.id, query);
   }
 
+  @Get("receipts/:receiptId/download")
+  async downloadReceipt(
+    @Param("customerId") customerId: string,
+    @Param("receiptId") receiptId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.financialsService.downloadReceipt(customerId, receiptId, user.id);
+  }
+
   @Get("transactions")
   async listTransactions(
     @Param("customerId") customerId: string,

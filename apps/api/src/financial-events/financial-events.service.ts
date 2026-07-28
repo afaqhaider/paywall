@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { FinancialEventType, FinancialProviderType, SyncStatus, type Prisma } from "@prisma/client";
+import { FinancialEventType, FinancialProviderType, Prisma, SyncStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import {
@@ -43,6 +43,12 @@ export class FinancialEventsService {
    * `SyncEngineService`'s periodic sweep - callers must never await an ERP
    * round-trip here ("do not block payment processing while waiting for
    * ERP").
+   *
+   * When `idempotencyKey` is supplied and a `FinancialEvent` with that key
+   * already exists, this is a no-op that returns the existing row rather
+   * than creating a duplicate trio - the guarantee the payment/subscription
+   * pipeline relies on so a retried webhook, a self-transition retry, or a
+   * doubly-invoked manual admin action never double-books revenue.
    */
   async record(
     organizationId: string,
@@ -51,35 +57,57 @@ export class FinancialEventsService {
     refs: FinancialEventRefs = {},
     userId?: string,
     meta?: RequestMeta,
+    idempotencyKey?: string,
   ) {
+    if (idempotencyKey) {
+      const existing = await this.prisma.financialEvent.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        return this.getWithSync(existing.id);
+      }
+    }
+
     const integration = await this.prisma.financialIntegration.findUnique({
       where: { organizationId },
       select: { provider: true },
     });
     const provider = integration?.provider ?? FinancialProviderType.INTERNAL;
 
-    const event = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.financialEvent.create({
-        data: {
-          organizationId,
-          applicationId: refs.applicationId,
-          customerId: refs.customerId,
-          subscriptionId: refs.subscriptionId,
-          type,
-          payload,
-        },
-      });
+    let event: { id: string };
+    try {
+      event = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.financialEvent.create({
+          data: {
+            organizationId,
+            applicationId: refs.applicationId,
+            customerId: refs.customerId,
+            subscriptionId: refs.subscriptionId,
+            type,
+            payload,
+            idempotencyKey,
+          },
+        });
 
-      await tx.syncQueue.create({
-        data: { financialEventId: created.id, status: SyncStatus.PENDING },
-      });
+        await tx.syncQueue.create({
+          data: { financialEventId: created.id, status: SyncStatus.PENDING },
+        });
 
-      await tx.financialSync.create({
-        data: { financialEventId: created.id, provider, status: SyncStatus.PENDING },
-      });
+        await tx.financialSync.create({
+          data: { financialEventId: created.id, provider, status: SyncStatus.PENDING },
+        });
 
-      return created;
-    });
+        return created;
+      });
+    } catch (error) {
+      // Unique violation on idempotencyKey = a concurrent caller won the
+      // race; return their row rather than erroring.
+      if (idempotencyKey && isUniqueConstraintError(error)) {
+        const winner = await this.prisma.financialEvent.findUniqueOrThrow({
+          where: { idempotencyKey },
+        });
+        return this.getWithSync(winner.id);
+      }
+      throw error;
+    }
 
     await this.auditService.record({
       action: "FINANCIAL_EVENT_CREATED",
@@ -119,4 +147,8 @@ export class FinancialEventsService {
       include: { sync: true, queueEntry: true },
     });
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

@@ -334,6 +334,9 @@ enum FinancialEventType {
   PAYMENT_SUCCEEDED
   PAYMENT_FAILED
   REFUND_ISSUED
+  REFUND_PARTIAL
+  CHARGEBACK_CREATED
+  CHARGEBACK_REVERSED
 }
 
 enum SyncStatus {
@@ -2684,6 +2687,14 @@ model FinancialEvent {
 
   type    FinancialEventType
   payload Json
+
+  /// Caller-supplied dedup key (e.g. `payment_succeeded:<transactionId>`,
+  /// `chargeback:<disputeId>`) - lets `FinancialEventsService.record()`
+  /// safely no-op a duplicate call (a retried webhook already covered by
+  /// PaymentWebhook's own idempotency, a doubly-invoked manual admin
+  /// action, ...) instead of creating a second FinancialEvent/SyncQueue/
+  /// FinancialSync trio for the same underlying business event.
+  idempotencyKey String? @unique
 
   createdAt DateTime @default(now())
 

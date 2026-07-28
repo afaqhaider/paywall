@@ -33,6 +33,7 @@ import type { GracePeriodDto } from "./dto/grace-period.dto";
 import type { MutationOptionsDto } from "./dto/mutation-options.dto";
 import type { RedeemCouponDto } from "../coupons/dto/redeem-coupon.dto";
 import { CouponsService } from "../coupons/coupons.service";
+import { FinancialEventsService } from "../financial-events/financial-events.service";
 
 type Tx = Prisma.TransactionClient;
 
@@ -49,6 +50,7 @@ export class SubscriptionsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly couponsService: CouponsService,
+    private readonly financialEventsService: FinancialEventsService,
   ) {}
 
   async create(
@@ -350,57 +352,104 @@ export class SubscriptionsService {
     }
 
     // Immediate application: proration now, no PENDING SubscriptionChange row.
-    return this.runTransition(subscriptionId, dto, userId, meta, async (tx, current) => {
-      const currentItem = await tx.subscriptionItem.findFirstOrThrow({
-        where: { subscriptionId: current.id },
-        include: { price: true },
-      });
+    let prorationInfo: { id: string; netMinor: number; currency: string; reason: string } | null =
+      null;
 
-      const newPrice = dto.targetPriceId
-        ? await tx.price.findUniqueOrThrow({ where: { id: dto.targetPriceId } })
-        : currentItem.price;
-      const newQuantity = dto.targetQuantity ?? current.quantity;
+    const result = await this.runTransition(
+      subscriptionId,
+      dto,
+      userId,
+      meta,
+      async (tx, current) => {
+        const currentItem = await tx.subscriptionItem.findFirstOrThrow({
+          where: { subscriptionId: current.id },
+          include: { price: true },
+        });
 
-      const periodStart = current.currentPeriodStart ?? new Date();
-      const periodEnd =
-        current.currentPeriodEnd ??
-        addBillingInterval(periodStart, newPrice.interval, newPrice.intervalCount);
+        const newPrice = dto.targetPriceId
+          ? await tx.price.findUniqueOrThrow({ where: { id: dto.targetPriceId } })
+          : currentItem.price;
+        const newQuantity = dto.targetQuantity ?? current.quantity;
 
-      const proration = calculateProration({
-        periodStart,
-        periodEnd,
-        now: new Date(),
-        oldAmountMinor: currentItem.price.amountMinor * currentItem.quantity,
-        newAmountMinor: newPrice.amountMinor * newQuantity,
-      });
+        const periodStart = current.currentPeriodStart ?? new Date();
+        const periodEnd =
+          current.currentPeriodEnd ??
+          addBillingInterval(periodStart, newPrice.interval, newPrice.intervalCount);
 
-      await tx.prorationRecord.create({
-        data: {
-          subscriptionId: current.id,
-          reason: prorationReasonFor(dto.type, currentItem.quantity, newQuantity),
-          creditMinor: proration.creditMinor,
-          chargeMinor: proration.chargeMinor,
-          netMinor: proration.netMinor,
-          currency: newPrice.currency,
+        const proration = calculateProration({
           periodStart,
           periodEnd,
-        },
-      });
-
-      if (dto.targetPriceId || dto.targetQuantity !== undefined || dto.targetPlanId) {
-        await tx.subscriptionItem.update({
-          where: { id: currentItem.id },
-          data: { priceId: newPrice.id, quantity: newQuantity },
+          now: new Date(),
+          oldAmountMinor: currentItem.price.amountMinor * currentItem.quantity,
+          newAmountMinor: newPrice.amountMinor * newQuantity,
         });
-      }
 
-      return {
-        toStatus: "ACTIVE",
-        eventType: eventTypeFor(dto.type),
-        data: { planId: dto.targetPlanId ?? current.planId, quantity: newQuantity },
-        metadata: { netMinor: proration.netMinor, currency: newPrice.currency },
-      };
-    });
+        const reason = prorationReasonFor(dto.type, currentItem.quantity, newQuantity);
+        const record = await tx.prorationRecord.create({
+          data: {
+            subscriptionId: current.id,
+            reason,
+            creditMinor: proration.creditMinor,
+            chargeMinor: proration.chargeMinor,
+            netMinor: proration.netMinor,
+            currency: newPrice.currency,
+            periodStart,
+            periodEnd,
+          },
+        });
+        prorationInfo = {
+          id: record.id,
+          netMinor: proration.netMinor,
+          currency: newPrice.currency,
+          reason,
+        };
+
+        if (dto.targetPriceId || dto.targetQuantity !== undefined || dto.targetPlanId) {
+          await tx.subscriptionItem.update({
+            where: { id: currentItem.id },
+            data: { priceId: newPrice.id, quantity: newQuantity },
+          });
+        }
+
+        return {
+          toStatus: "ACTIVE",
+          eventType: eventTypeFor(dto.type),
+          data: { planId: dto.targetPlanId ?? current.planId, quantity: newQuantity },
+          metadata: { netMinor: proration.netMinor, currency: newPrice.currency },
+        };
+      },
+    );
+
+    // Recorded after the transition transaction commits - a proration
+    // charge/credit is an "upgrade payment" / "proration charge" financial
+    // event (see FinancialEventsService), computed here because this is the
+    // one place in the codebase that actually calculates the amount.
+    if (prorationInfo) {
+      const info: { id: string; netMinor: number; currency: string; reason: string } =
+        prorationInfo;
+      await this.financialEventsService.record(
+        sub.organizationId,
+        "PAYMENT_SUCCEEDED",
+        {
+          reason: info.netMinor >= 0 ? "upgrade_proration_charge" : "downgrade_proration_credit",
+          prorationRecordId: info.id,
+          subscriptionId: sub.id,
+          netMinor: info.netMinor,
+          amountMinor: Math.abs(info.netMinor),
+          currency: info.currency,
+          taxMinor: 0,
+          discountMinor: 0,
+          prorationReason: info.reason,
+          description: `Proration (${info.reason}) for subscription ${sub.id}`,
+        },
+        { applicationId: sub.applicationId, customerId: sub.customerId, subscriptionId: sub.id },
+        userId,
+        meta,
+        `proration:${info.id}`,
+      );
+    }
+
+    return result;
   }
 
   async listChanges(subscriptionId: string) {
