@@ -22,6 +22,7 @@ import { SubscriptionsModule } from "./subscriptions/subscriptions.module";
 import { CouponsModule } from "./coupons/coupons.module";
 import { TrialsModule } from "./trials/trials.module";
 import { UsageModule } from "./usage/usage.module";
+import { PaymentsModule } from "./payments/payments.module";
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { UsageModule } from "./usage/usage.module";
     SubscriptionsModule,
     TrialsModule,
     UsageModule,
+    PaymentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

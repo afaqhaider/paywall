@@ -9,7 +9,7 @@ import { AppModule } from "./app.module";
 import { buildCorsOptions } from "./config/cors.config";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   const logger = app.get(Logger);
   app.useLogger(logger);

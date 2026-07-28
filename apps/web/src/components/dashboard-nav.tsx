@@ -40,6 +40,30 @@ export function DashboardNav({ children }: { children?: React.ReactNode }) {
           <Link href="/dashboard/coupons" className="hover:text-slate-900">
             Coupons
           </Link>
+          <Link href="/dashboard/payment-providers" className="hover:text-slate-900">
+            Payment Providers
+          </Link>
+          <Link href="/dashboard/transactions" className="hover:text-slate-900">
+            Transactions
+          </Link>
+          <Link href="/dashboard/refunds" className="hover:text-slate-900">
+            Refunds
+          </Link>
+          <Link href="/dashboard/invoices" className="hover:text-slate-900">
+            Invoices
+          </Link>
+          <Link href="/dashboard/disputes" className="hover:text-slate-900">
+            Disputes
+          </Link>
+          <Link href="/dashboard/checkout-sessions" className="hover:text-slate-900">
+            Checkout Sessions
+          </Link>
+          <Link href="/dashboard/payment-webhooks" className="hover:text-slate-900">
+            Webhooks
+          </Link>
+          <Link href="/dashboard/payment-methods" className="hover:text-slate-900">
+            Payment Methods
+          </Link>
           <Link href="/dashboard/profile" className="hover:text-slate-900">
             Profile
           </Link>

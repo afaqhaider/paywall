@@ -1,6 +1,7 @@
 // Phase 4: Subscription Engine (provider-independent core).
-// Payments, invoices, refunds, webhooks, runtime entitlement enforcement,
-// license keys: not yet.
+// Phase 5: Payment Provider Framework (adapters for Stripe/Apple/Google/
+// PayPal/Easypaisa/JazzCash/bank transfer/manual).
+// Runtime entitlement enforcement, license keys, accounting/tax: not yet.
 
 generator client {
   provider      = "prisma-client-js"
@@ -287,6 +288,496 @@ enum AuditAction {
   SUBSCRIPTION_CANCELED
   SUBSCRIPTION_CHANGE_SCHEDULED
   SUBSCRIPTION_CHANGE_CANCELED
+  PAYMENT_PROVIDER_CREATED
+  PAYMENT_PROVIDER_UPDATED
+  PAYMENT_PROVIDER_ARCHIVED
+  PROVIDER_CREDENTIAL_CREATED
+  PROVIDER_CREDENTIAL_ROTATED
+  PROVIDER_CREDENTIAL_REMOVED
+  CHECKOUT_SESSION_CREATED
+  PAYMENT_REFUND_CREATED
+  PAYMENT_METHOD_REMOVED
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Payment Provider Framework
+// ---------------------------------------------------------------------------
+// Payment providers are adapters behind one common interface
+// (`PaymentProviderAdapter`, apps/api/src/payments/adapters/). This schema
+// only stores *state* (providers, credentials, transactions, webhooks,
+// refunds, disputes, invoices, receipts) - it never encodes provider-specific
+// business logic. The Subscription Engine (Phase 4) is the only thing that
+// ever changes `Subscription.status`; the webhook pipeline calls into
+// `SubscriptionsService`'s public methods rather than writing to
+// `Subscription` directly, so this file has zero new FKs *from* Subscription
+// into payment tables beyond the optional back-references needed for
+// reporting (`Subscription.paymentTransactions`, etc).
+
+enum PaymentProviderType {
+  STRIPE
+  APPLE_APP_STORE
+  GOOGLE_PLAY
+  PAYPAL
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  MANUAL
+}
+
+enum PaymentEnvironmentMode {
+  SANDBOX
+  PRODUCTION
+}
+
+enum PaymentProviderStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PaymentMethodType {
+  CARD
+  BANK_ACCOUNT
+  WALLET
+  MANUAL
+  OTHER
+}
+
+enum PaymentMethodStatus {
+  ACTIVE
+  EXPIRED
+  REMOVED
+}
+
+enum PaymentCheckoutSessionStatus {
+  OPEN
+  COMPLETE
+  EXPIRED
+  CANCELED
+}
+
+enum PaymentTransactionStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  DISPUTED
+  CHARGEBACK
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum PaymentWebhookStatus {
+  RECEIVED
+  VERIFIED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum PlatformPaymentEventType {
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  PAYMENT_PENDING
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_CANCELED
+  SUBSCRIPTION_EXPIRED
+  SUBSCRIPTION_PAST_DUE
+  REFUND_CREATED
+  REFUND_COMPLETED
+  CHARGEBACK_CREATED
+  DISPUTE_UPDATED
+  UNKNOWN
+}
+
+enum PaymentRefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PaymentDisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  WON
+  LOST
+  ACCEPTED
+}
+
+enum PaymentInvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+/// One row per organization per configured provider connection (e.g. "this
+/// org's Stripe account", "this org's manual/bank-transfer option"). Secrets
+/// live in `ProviderCredential`, never here - this row only holds
+/// non-secret configuration and status.
+model PaymentProvider {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  type        PaymentProviderType
+  displayName String
+  environment PaymentEnvironmentMode @default(SANDBOX)
+  status      PaymentProviderStatus  @default(ACTIVE)
+  config      Json? // non-secret config (e.g. statement descriptor, default currency)
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  credentials      ProviderCredential[]
+  accounts         ProviderAccount[]
+  paymentCustomers PaymentCustomer[]
+  paymentMethods   PaymentMethod[]
+  checkoutSessions PaymentCheckoutSession[]
+  transactions     PaymentTransaction[]
+  webhooks         PaymentWebhook[]
+  invoices         PaymentInvoice[]
+
+  @@unique([organizationId, type, environment])
+  @@index([organizationId])
+  @@map("payment_providers")
+}
+
+/// Encrypted secret material for a provider connection (API secret key,
+/// webhook signing secret, service-account key, shared HMAC key, ...). One
+/// provider can hold several named credentials (`key`, e.g. "SECRET_KEY",
+/// "WEBHOOK_SECRET"); AES-256-GCM at rest via the same encryption util as
+/// `ApplicationSecret`. `rotatedAt` supports secret rotation without losing
+/// history of *that* it happened (old rows are simply superseded, not kept).
+model ProviderCredential {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  key            String // e.g. SECRET_KEY, WEBHOOK_SECRET, PUBLISHABLE_KEY, SHARED_SECRET
+  encryptedValue String
+  iv             String
+  authTag        String
+  lastFour       String?
+
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  rotatedAt   DateTime?
+
+  @@unique([providerId, key])
+  @@index([providerId])
+  @@map("provider_credentials")
+}
+
+/// Maps our `PaymentProvider` connection to the provider's own account
+/// identity - a Stripe connected account id, an Apple bundle id + team id, a
+/// Google Play package name + service-account email, a PayPal merchant id.
+/// Deliberately free-form (`metadata`) since every provider's identity shape
+/// differs; `externalAccountId` is whichever single ID that provider treats
+/// as primary. Never hardcoded - always read from this row.
+model ProviderAccount {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  externalAccountId String
+  label             String?
+  metadata          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId])
+  @@map("provider_accounts")
+}
+
+/// Links a Subscription Engine `Customer` to their identity at one provider
+/// (e.g. a Stripe Customer ID). A Customer can have one `PaymentCustomer`
+/// per provider they've paid through.
+model PaymentCustomer {
+  id         String          @id @default(uuid())
+  customerId String
+  customer   Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  externalCustomerId String
+  metadata           Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  paymentMethods PaymentMethod[]
+
+  @@unique([customerId, providerId])
+  @@index([providerId])
+  @@map("payment_customers")
+}
+
+/// A stored, reusable payment method at a provider (card, bank account,
+/// wallet). Display fields (`brand`/`last4`) are non-sensitive echoes of
+/// what the provider already returns - no PAN/CVV ever touches this table.
+model PaymentMethod {
+  id                String          @id @default(uuid())
+  paymentCustomerId String
+  paymentCustomer   PaymentCustomer @relation(fields: [paymentCustomerId], references: [id], onDelete: Cascade)
+  providerId        String
+  provider          PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  type                    PaymentMethodType
+  externalPaymentMethodId String
+  brand                   String?
+  last4                   String?
+  expiresAt               DateTime?
+  status                  PaymentMethodStatus @default(ACTIVE)
+  isDefault               Boolean             @default(false)
+  metadata                Json?
+
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  removedAt           DateTime?
+  paymentTransactions PaymentTransaction[]
+
+  @@index([paymentCustomerId])
+  @@index([providerId])
+  @@map("payment_methods")
+}
+
+/// A provider-independent checkout session. Not in the spec's literal model
+/// list, but required by the spec's own "Checkout" and "Admin UI" sections -
+/// added the same way `ProrationRecord` was added in Phase 4: something the
+/// spec's behavior requires that its model list didn't literally name.
+model PaymentCheckoutSession {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId      String?
+  product        Product?      @relation(fields: [productId], references: [id])
+  planId         String?
+  plan           Plan?         @relation(fields: [planId], references: [id])
+  priceId        String?
+  price          Price?        @relation(fields: [priceId], references: [id])
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  status            PaymentCheckoutSessionStatus @default(OPEN)
+  checkoutUrl       String
+  providerReference String
+  successUrl        String?
+  cancelUrl         String?
+  metadata          Json?
+
+  expiresAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  paymentTransactions PaymentTransaction[]
+
+  @@index([providerId])
+  @@index([customerId])
+  @@map("payment_checkout_sessions")
+}
+
+/// The provider-independent record of money moving (or attempting to move).
+/// `providerTransactionId` + `providerId` is how we dedupe against
+/// provider-side retries; `status` follows the full lifecycle the spec asks
+/// for (Pending -> Authorized/Captured -> Succeeded, or -> Failed/Canceled,
+/// then possibly -> Refunded/PartiallyRefunded/Disputed/Chargeback).
+model PaymentTransaction {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  customerId        String
+  customer          Customer                @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  subscriptionId    String?
+  subscription      Subscription?           @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  paymentMethodId   String?
+  paymentMethod     PaymentMethod?          @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  checkoutSessionId String?
+  checkoutSession   PaymentCheckoutSession? @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+
+  amountMinor           Int
+  currency              String
+  status                PaymentTransactionStatus @default(PENDING)
+  providerTransactionId String?
+  providerReference     String?
+  failureReason         String?
+  metadata              Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attempts PaymentAttempt[]
+  refunds  PaymentRefund[]
+  disputes PaymentDispute[]
+  receipts PaymentReceipt[]
+
+  @@unique([providerId, providerTransactionId])
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+/// One row per attempt to complete a `PaymentTransaction` - a transaction
+/// that fails and is retried (e.g. renewal payment retry) gets multiple
+/// attempts rather than multiple transactions.
+model PaymentAttempt {
+  id            String             @id @default(uuid())
+  transactionId String
+  transaction   PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  attemptNumber  Int                  @default(1)
+  status         PaymentAttemptStatus @default(PENDING)
+  failureCode    String?
+  failureMessage String?
+  metadata       Json?
+
+  occurredAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@map("payment_attempts")
+}
+
+/// The generic webhook pipeline's ledger: every inbound webhook is stored
+/// here (raw payload included) before anything is dispatched.
+/// `[providerId, externalEventId]` is the idempotency key - a replayed
+/// webhook finds its existing row and is never processed twice.
+model PaymentWebhook {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  externalEventId String
+  eventType       String // raw provider event type string, e.g. "invoice.paid"
+  normalizedType  PlatformPaymentEventType?
+  payload         Json
+  signatureValid  Boolean                   @default(false)
+  status          PaymentWebhookStatus      @default(RECEIVED)
+  error           String?
+
+  relatedTransactionId  String?
+  relatedSubscriptionId String?
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@unique([providerId, externalEventId])
+  @@index([providerId])
+  @@index([status])
+  @@map("payment_webhooks")
+}
+
+model PaymentRefund {
+  id            String             @id @default(uuid())
+  transactionId String
+  transaction   PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  amountMinor      Int
+  currency         String
+  reason           String?
+  status           PaymentRefundStatus @default(PENDING)
+  providerRefundId String?
+  metadata         Json?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([transactionId])
+  @@map("payment_refunds")
+}
+
+model PaymentDispute {
+  id            String             @id @default(uuid())
+  transactionId String
+  transaction   PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  providerDisputeId String
+  amountMinor       Int
+  currency          String
+  reason            String?
+  status            PaymentDisputeStatus @default(OPEN)
+  evidenceDueBy     DateTime?
+  metadata          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transactionId])
+  @@map("payment_disputes")
+}
+
+/// Provider-side invoicing metadata only (Stripe/Apple/Google's own invoice
+/// record) - not a general accounting/ledger feature, which is explicitly
+/// out of scope for this phase.
+model PaymentInvoice {
+  id         String          @id @default(uuid())
+  providerId String
+  provider   PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  providerInvoiceId String?
+  amountDueMinor    Int
+  amountPaidMinor   Int                  @default(0)
+  currency          String
+  status            PaymentInvoiceStatus @default(DRAFT)
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  issuedAt          DateTime?
+  paidAt            DateTime?
+  metadata          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@map("payment_invoices")
+}
+
+/// A simple receipt record tied to a successful transaction - not an
+/// accounting document, just proof-of-payment metadata (explicitly no
+/// accounting/tax engine in this phase).
+model PaymentReceipt {
+  id            String             @id @default(uuid())
+  transactionId String
+  transaction   PaymentTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  receiptNumber String   @unique
+  url           String?
+  issuedAt      DateTime @default(now())
+  metadata      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@map("payment_receipts")
 }
 
 model User {
@@ -323,6 +814,9 @@ model User {
   createdSubscriptionChanges SubscriptionChange[]
   subscriptionEvents         SubscriptionEvent[]
   customers                  Customer[]
+  createdPaymentProviders    PaymentProvider[]
+  createdProviderCredentials ProviderCredential[]
+  createdPaymentRefunds      PaymentRefund[]
 
   @@map("users")
 }
@@ -379,13 +873,14 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members       OrganizationMember[]
-  auditLogs     AuditLog[]
-  applications  Application[]
-  products      Product[]
-  customers     Customer[]
-  subscriptions Subscription[]
-  coupons       Coupon[]
+  members          OrganizationMember[]
+  auditLogs        AuditLog[]
+  applications     Application[]
+  products         Product[]
+  customers        Customer[]
+  subscriptions    Subscription[]
+  coupons          Coupon[]
+  paymentProviders PaymentProvider[]
 
   @@map("organizations")
 }
@@ -636,10 +1131,11 @@ model Product {
   updatedAt   DateTime  @updatedAt
   archivedAt  DateTime?
 
-  plans         Plan[]
-  subscriptions Subscription[]
-  trials        Trial[]
-  coupons       Coupon[]
+  plans            Plan[]
+  subscriptions    Subscription[]
+  trials           Trial[]
+  coupons          Coupon[]
+  checkoutSessions PaymentCheckoutSession[]
 
   @@index([organizationId])
   @@index([applicationId])
@@ -667,12 +1163,13 @@ model Plan {
   updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
 
-  prices          Price[]
-  planFeatures    PlanFeature[]
-  subscriptions   Subscription[]
-  trials          Trial[]
-  coupons         Coupon[]
-  targetOfChanges SubscriptionChange[]
+  prices           Price[]
+  planFeatures     PlanFeature[]
+  subscriptions    Subscription[]
+  trials           Trial[]
+  coupons          Coupon[]
+  targetOfChanges  SubscriptionChange[]
+  checkoutSessions PaymentCheckoutSession[]
 
   @@unique([productId, code])
   @@index([productId])
@@ -703,6 +1200,7 @@ model Price {
 
   subscriptionItems SubscriptionItem[]
   targetOfChanges   SubscriptionChange[]
+  checkoutSessions  PaymentCheckoutSession[]
 
   @@index([planId])
   @@map("prices")
@@ -803,6 +1301,10 @@ model Customer {
   trials              Trial[]
   subscriptionCoupons SubscriptionCoupon[]
   promotionCodes      PromotionCode[]
+  paymentCustomers    PaymentCustomer[]
+  checkoutSessions    PaymentCheckoutSession[]
+  paymentTransactions PaymentTransaction[]
+  paymentInvoices     PaymentInvoice[]
 
   @@index([organizationId])
   @@index([applicationId])
@@ -856,6 +1358,9 @@ model Subscription {
   subscriptionCoupons SubscriptionCoupon[]
   usageRecords        UsageRecord[]
   prorationRecords    ProrationRecord[]
+  checkoutSessions    PaymentCheckoutSession[]
+  paymentTransactions PaymentTransaction[]
+  paymentInvoices     PaymentInvoice[]
 
   @@index([organizationId])
   @@index([customerId])
