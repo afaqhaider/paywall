@@ -1235,7 +1235,7 @@ model PaymentTransaction {
   refunds          PaymentRefund[]
   disputes         PaymentDispute[]
   receipts         PaymentReceipt[]
-  commissionLedger CommissionLedgerEntry?
+  commissionLedger CommissionLedgerEntry[]
 
   @@unique([providerId, providerTransactionId])
   @@index([customerId])
@@ -3851,10 +3851,14 @@ model CommissionRule {
 /// re-read live), so later rule changes never move historical numbers.
 /// A refund/chargeback creates a NEW entry linked via `reversalOfId` with
 /// negated amounts rather than mutating the original (matches the
-/// append-only convention already used by `FinancialEvent`/`SyncHistory`).
+/// append-only convention already used by `FinancialEvent`/`SyncHistory`) -
+/// `paymentTransactionId` is therefore NOT unique (a reversal row points at
+/// the same transaction as its original); idempotency for the original
+/// ACCRUED entry is enforced in application code instead (one ACCRUED row
+/// per transaction, checked before insert).
 model CommissionLedgerEntry {
   id                   String             @id @default(uuid())
-  paymentTransactionId String             @unique
+  paymentTransactionId String
   paymentTransaction   PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
   organizationId       String
   organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -3877,6 +3881,7 @@ model CommissionLedgerEntry {
 
   createdAt DateTime @default(now())
 
+  @@index([paymentTransactionId])
   @@index([organizationId])
   @@index([status])
   @@index([payoutId])
