@@ -1198,6 +1198,7 @@ model PaymentCheckoutSession {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   paymentTransactions PaymentTransaction[]
+  checkoutIntent      CheckoutIntent?
 
   @@index([providerId])
   @@index([customerId])
@@ -1532,6 +1533,7 @@ model Organization {
   commissionRules      CommissionRule[]
   commissionLedger     CommissionLedgerEntry[]
   payouts              Payout[]
+  checkoutIntents      CheckoutIntent[]
 
   @@map("organizations")
 }
@@ -1627,6 +1629,7 @@ model Application {
   financialEvents        FinancialEvent[]
   listing                Listing?
   commissionRules        CommissionRule[]
+  checkoutIntents        CheckoutIntent[]
 
   @@index([organizationId])
   @@map("applications")
@@ -1838,6 +1841,7 @@ model Plan {
   coupons          Coupon[]
   targetOfChanges  SubscriptionChange[]
   checkoutSessions PaymentCheckoutSession[]
+  checkoutIntents  CheckoutIntent[]
 
   @@unique([productId, code])
   @@index([productId])
@@ -1869,6 +1873,7 @@ model Price {
   subscriptionItems SubscriptionItem[]
   targetOfChanges   SubscriptionChange[]
   checkoutSessions  PaymentCheckoutSession[]
+  checkoutIntents   CheckoutIntent[]
 
   @@index([planId])
   @@map("prices")
@@ -3916,4 +3921,53 @@ model Payout {
   @@index([organizationId])
   @@index([status])
   @@map("payouts")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 12 checkpoint 6: embeddable checkout widget (developer front)
+// ---------------------------------------------------------------------------
+
+enum CheckoutIntentStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+/// A third-party app (e.g. "LedGix Expense Tracker") calls
+/// `POST /public/checkout-intents` with an API key to fetch a hosted
+/// checkout URL for a plan its user picked - this row exists so that URL
+/// can present a payment-provider picker (Stripe incl. Apple/Google Pay
+/// wallet buttons, Easypaisa, JazzCash, ...) BEFORE a specific
+/// `PaymentCheckoutSession` is created, since `PaymentCheckoutSession`
+/// requires a provider to already be chosen. Deliberately short-lived and
+/// throwaway - once `checkoutSessionId` is set the real state lives on the
+/// `PaymentCheckoutSession` this points at, same as everywhere else in this
+/// codebase.
+model CheckoutIntent {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  customerEmail String
+  planId        String
+  plan          Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  priceId       String
+  price         Price  @relation(fields: [priceId], references: [id], onDelete: Cascade)
+
+  successUrl String?
+  cancelUrl  String?
+
+  status            CheckoutIntentStatus    @default(PENDING)
+  checkoutSessionId String?                 @unique
+  checkoutSession   PaymentCheckoutSession? @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  completedAt DateTime?
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("checkout_intents")
 }
