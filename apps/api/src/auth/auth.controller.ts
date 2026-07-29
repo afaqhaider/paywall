@@ -17,7 +17,6 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { GoogleConfiguredGuard, type GoogleProfile } from "./strategies/google.strategy";
-import { GithubConfiguredGuard, type GithubProfile } from "./strategies/github.strategy";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
@@ -70,31 +69,6 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     const pair = await this.authService.loginWithGoogle(req.user, extractRequestMeta(req));
-    setRefreshCookies(res, pair.refreshToken, {
-      maxAgeMs: pair.refreshTokenExpiresAt.getTime() - Date.now(),
-    });
-
-    const webOrigin = this.configService.get<string>("WEB_ORIGIN", "http://localhost:3000");
-    res.redirect(`${webOrigin}/dashboard`);
-  }
-
-  @Public()
-  @Get("github")
-  @UseGuards(GithubConfiguredGuard, AuthGuard("github"))
-  async githubAuth(): Promise<void> {
-    // Same shape as googleAuth() above: GithubConfiguredGuard rejects
-    // cleanly if unconfigured; otherwise AuthGuard("github") redirects to
-    // GitHub before this body ever runs.
-  }
-
-  @Public()
-  @Get("github/callback")
-  @UseGuards(GithubConfiguredGuard, AuthGuard("github"))
-  async githubCallback(
-    @Req() req: Request & { user: GithubProfile },
-    @Res() res: Response,
-  ): Promise<void> {
-    const pair = await this.authService.loginWithGithub(req.user, extractRequestMeta(req));
     setRefreshCookies(res, pair.refreshToken, {
       maxAgeMs: pair.refreshTokenExpiresAt.getTime() - Date.now(),
     });

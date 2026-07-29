@@ -2,7 +2,6 @@ import { Module } from "@nestjs/common";
 import { SubscriptionsModule } from "../subscriptions/subscriptions.module";
 import { FinancialEventsModule } from "../financial-events/financial-events.module";
 import { PlatformEventsModule } from "../platform-events/platform-events.module";
-import { CommissionsModule } from "../commissions/commissions.module";
 import {
   ProvidersController,
   ProviderAccountsController,
@@ -39,12 +38,9 @@ import { DisputesController } from "./disputes.controller";
 import { DisputesService } from "./disputes.service";
 import { PaymentMethodsController } from "./payment-methods.controller";
 import { PaymentMethodsService } from "./payment-methods.service";
-import { PublicCatalogController } from "./public/public-catalog.controller";
-import { PublicCheckoutIntentsController } from "./public/public-checkout-intents.controller";
-import { PublicCheckoutService } from "./public/public-checkout.service";
 
 @Module({
-  imports: [SubscriptionsModule, FinancialEventsModule, PlatformEventsModule, CommissionsModule],
+  imports: [SubscriptionsModule, FinancialEventsModule, PlatformEventsModule],
   controllers: [
     ProvidersController,
     ProviderAccountsController,
@@ -57,8 +53,6 @@ import { PublicCheckoutService } from "./public/public-checkout.service";
     InvoicesController,
     DisputesController,
     PaymentMethodsController,
-    PublicCatalogController,
-    PublicCheckoutIntentsController,
   ],
   providers: [
     ProvidersService,
@@ -105,7 +99,6 @@ import { PublicCheckoutService } from "./public/public-checkout.service";
     InvoicesService,
     DisputesService,
     PaymentMethodsService,
-    PublicCheckoutService,
   ],
 })
 export class PaymentsModule {}

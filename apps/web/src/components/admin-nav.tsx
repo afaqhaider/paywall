@@ -14,7 +14,6 @@ const NAV_LINKS = [
   { href: "/admin/subscriptions", label: "Subscriptions" },
   { href: "/admin/licenses", label: "Licenses" },
   { href: "/admin/financial-integrations", label: "Financial Integrations" },
-  { href: "/admin/payouts", label: "Payouts" },
   { href: "/admin/erp-status", label: "ERP Status" },
   { href: "/admin/payments", label: "Payments" },
   { href: "/admin/queues", label: "Monitoring" },

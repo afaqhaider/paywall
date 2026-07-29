@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type { Prisma, Session, User } from "@prisma/client";
+import type { Session, User } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
 import { AuditService } from "../audit/audit.service";
@@ -17,7 +17,6 @@ import { ACCESS_TOKEN_TTL_MS, PASSWORD_RESET_TTL_MS, REFRESH_TOKEN_TTL_MS } from
 import type { RegisterDto } from "./dto/register.dto";
 import type { LoginDto } from "./dto/login.dto";
 import type { GoogleProfile } from "./strategies/google.strategy";
-import type { GithubProfile } from "./strategies/github.strategy";
 
 export interface PublicUser {
   id: string;
@@ -147,43 +146,25 @@ export class AuthService {
   }
 
   /**
-   * Finds-or-creates a User for a verified OAuth identity (Google, GitHub).
-   * Auto-links by email if an existing password account matches - the
-   * provider has already verified that email, so this is the accepted
-   * trade-off (documented at the point Google login was first added):
-   * whoever controls that provider account gets in, without ever knowing
-   * the original password.
+   * Finds-or-creates a User for a verified Google identity. Auto-links by
+   * email if an existing password account matches - Google has already
+   * verified that email, so this is the accepted trade-off (documented at
+   * the point this feature was requested): whoever controls that Google
+   * account gets in, without ever knowing the original password.
    */
-  private async loginWithOAuthProfile(
-    idField: "googleId" | "githubId",
-    providerId: string,
-    profile: {
-      email: string;
-      emailVerified: boolean;
-      firstName?: string;
-      lastName?: string;
-      avatarUrl?: string;
-    },
-    meta: RequestMeta,
-  ): Promise<TokenPair> {
-    const providerWhere: Prisma.UserWhereUniqueInput =
-      idField === "googleId" ? { googleId: providerId } : { githubId: providerId };
-
-    let user = await this.prisma.user.findUnique({ where: providerWhere });
+  async loginWithGoogle(profile: GoogleProfile, meta: RequestMeta): Promise<TokenPair> {
+    let user = await this.prisma.user.findUnique({ where: { googleId: profile.googleId } });
 
     if (!user) {
       const existingByEmail = await this.prisma.user.findUnique({
         where: { email: profile.email },
       });
 
-      const providerIdData: { googleId?: string; githubId?: string } =
-        idField === "googleId" ? { googleId: providerId } : { githubId: providerId };
-
       if (existingByEmail) {
         user = await this.prisma.user.update({
           where: { id: existingByEmail.id },
           data: {
-            ...providerIdData,
+            googleId: profile.googleId,
             emailVerified: existingByEmail.emailVerified || profile.emailVerified,
             emailVerifiedAt:
               existingByEmail.emailVerifiedAt ?? (profile.emailVerified ? new Date() : undefined),
@@ -194,7 +175,7 @@ export class AuthService {
         user = await this.prisma.user.create({
           data: {
             email: profile.email,
-            ...providerIdData,
+            googleId: profile.googleId,
             emailVerified: profile.emailVerified,
             emailVerifiedAt: profile.emailVerified ? new Date() : undefined,
             firstName: profile.firstName,
@@ -219,14 +200,6 @@ export class AuthService {
     await this.auditService.record({ action: "LOGIN_SUCCEEDED", userId: user.id, ...meta });
 
     return pair;
-  }
-
-  async loginWithGoogle(profile: GoogleProfile, meta: RequestMeta): Promise<TokenPair> {
-    return this.loginWithOAuthProfile("googleId", profile.googleId, profile, meta);
-  }
-
-  async loginWithGithub(profile: GithubProfile, meta: RequestMeta): Promise<TokenPair> {
-    return this.loginWithOAuthProfile("githubId", profile.githubId, profile, meta);
   }
 
   async issueTokenPair(

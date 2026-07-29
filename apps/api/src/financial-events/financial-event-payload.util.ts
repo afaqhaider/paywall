@@ -17,9 +17,6 @@ export interface FinancialEventPayloadFields {
   reference?: string;
   taxMinor?: number;
   discountMinor?: number;
-  /** The `PaymentTransaction` this event originated from - used to look up
-   * its `CommissionLedgerEntry` split when posting the LedGix invoice. */
-  transactionId?: string;
 }
 
 export function readPayloadFields(payload: Prisma.JsonValue): FinancialEventPayloadFields {

@@ -13,7 +13,6 @@ import { SubscriptionsService } from "../subscriptions/subscriptions.service";
 import { SystemActorService } from "./system-actor.service";
 import { FinancialEventsService } from "../financial-events/financial-events.service";
 import { PlatformEventsService } from "../platform-events/platform-events.service";
-import { CommissionsService } from "../commissions/commissions.service";
 import type { NormalizedPaymentEvent } from "./adapters/payment-provider.adapter";
 
 const SYSTEM_META = {};
@@ -54,7 +53,6 @@ export class PaymentEventDispatcherService {
     private readonly systemActor: SystemActorService,
     private readonly financialEventsService: FinancialEventsService,
     private readonly platformEventsService: PlatformEventsService,
-    private readonly commissionsService: CommissionsService,
   ) {}
 
   async dispatch(
@@ -107,13 +105,6 @@ export class PaymentEventDispatcherService {
               transaction,
               subscription,
               preStatus,
-            );
-            await this.commissionsService.recordForTransaction(
-              transaction.id,
-              organizationId,
-              subscription?.applicationId ?? null,
-              transaction.amountMinor,
-              transaction.currency,
             );
             await this.platformEventsService.publish(
               "PAYMENT_SUCCEEDED",
@@ -454,14 +445,6 @@ export class PaymentEventDispatcherService {
       `refund:${refund.id}`,
     );
 
-    // Only a FULL refund reverses the commission ledger entry outright -
-    // proportionally reversing a partial refund's commission share is a
-    // documented gap here, not handled yet (the ACCRUED entry from the
-    // original sale is left as-is for partial refunds).
-    if (isFull) {
-      await this.commissionsService.reverseForTransaction(transaction.id);
-    }
-
     await this.platformEventsService.publish(
       "REFUND_CREATED",
       { transactionId: transaction.id, refundId: refund.id, amountMinor: refundAmount },
@@ -511,8 +494,6 @@ export class PaymentEventDispatcherService {
       SYSTEM_META,
       `chargeback:${dispute.id}`,
     );
-
-    await this.commissionsService.reverseForTransaction(transaction.id);
 
     await this.platformEventsService.publish(
       "CHARGEBACK_CREATED",

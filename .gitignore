@@ -16,17 +16,9 @@ out/
 .env.*.local
 !.env.example
 
-# OAuth client secrets / signing keys downloaded from provider consoles -
-# never commit these, regardless of re-download naming ("(1)", "(2)", ...)
+# OAuth client secrets downloaded from provider consoles - never commit these
 client_secret*.json
 google-services*.json
-GoogleService-Info*.plist
-*firebase-service-account*.json
-*Client*Secret*
-*.p8
-*.p12
-*.pem
-*.key
 
 # Logs
 *.log

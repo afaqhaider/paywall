@@ -6,7 +6,6 @@ import { useState, type FormEvent } from "react";
 import { Alert, Button, Input, Label } from "@paywall/ui";
 import { AuthCard } from "../../components/auth-card";
 import { GoogleSignInButton } from "../../components/google-signin-button";
-import { GithubSignInButton } from "../../components/github-signin-button";
 import { ApiError } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -148,7 +147,6 @@ export default function LoginPage() {
           <div className="h-px flex-1 bg-slate-200" />
         </div>
         <GoogleSignInButton />
-        <GithubSignInButton />
         <p className="text-center text-sm text-slate-500">
           Don&apos;t have an account?{" "}
           <Link href="/register" className="font-medium text-slate-900 underline">

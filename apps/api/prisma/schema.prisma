@@ -576,9 +576,6 @@ enum AuditAction {
   REVIEW_REPORT_RESOLVED
   REPORT_REQUESTED
   WHITE_LABEL_CONFIG_UPDATED
-  COMMISSION_RULE_CREATED
-  PAYOUT_CREATED
-  PAYOUT_MARKED_PAID
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,7 +1195,6 @@ model PaymentCheckoutSession {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   paymentTransactions PaymentTransaction[]
-  checkoutIntent      CheckoutIntent?
 
   @@index([providerId])
   @@index([customerId])
@@ -1235,11 +1231,10 @@ model PaymentTransaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  attempts         PaymentAttempt[]
-  refunds          PaymentRefund[]
-  disputes         PaymentDispute[]
-  receipts         PaymentReceipt[]
-  commissionLedger CommissionLedgerEntry[]
+  attempts PaymentAttempt[]
+  refunds  PaymentRefund[]
+  disputes PaymentDispute[]
+  receipts PaymentReceipt[]
 
   @@unique([providerId, providerTransactionId])
   @@index([customerId])
@@ -1395,7 +1390,6 @@ model User {
   email           String    @unique
   passwordHash    String?
   googleId        String?   @unique
-  githubId        String?   @unique
   emailVerified   Boolean   @default(false)
   emailVerifiedAt DateTime?
 
@@ -1462,8 +1456,6 @@ model User {
   reviewReplies                ReviewReply[]
   reviewReports                ReviewReport[]
   reportRequests               ReportRequest[]
-  createdCommissionRules       CommissionRule[]
-  markedPaidPayouts            Payout[]
 
   @@map("users")
 }
@@ -1530,10 +1522,6 @@ model Organization {
   financialEvents      FinancialEvent[]
   whiteLabelConfig     WhiteLabelConfig?
   reportRequests       ReportRequest[]
-  commissionRules      CommissionRule[]
-  commissionLedger     CommissionLedgerEntry[]
-  payouts              Payout[]
-  checkoutIntents      CheckoutIntent[]
 
   @@map("organizations")
 }
@@ -1628,8 +1616,6 @@ model Application {
   webhookEndpoints       WebhookEndpoint[]
   financialEvents        FinancialEvent[]
   listing                Listing?
-  commissionRules        CommissionRule[]
-  checkoutIntents        CheckoutIntent[]
 
   @@index([organizationId])
   @@map("applications")
@@ -1841,7 +1827,6 @@ model Plan {
   coupons          Coupon[]
   targetOfChanges  SubscriptionChange[]
   checkoutSessions PaymentCheckoutSession[]
-  checkoutIntents  CheckoutIntent[]
 
   @@unique([productId, code])
   @@index([productId])
@@ -1873,7 +1858,6 @@ model Price {
   subscriptionItems SubscriptionItem[]
   targetOfChanges   SubscriptionChange[]
   checkoutSessions  PaymentCheckoutSession[]
-  checkoutIntents   CheckoutIntent[]
 
   @@index([planId])
   @@map("prices")
@@ -3798,176 +3782,4 @@ model WhiteLabelConfig {
   updatedAt DateTime @updatedAt
 
   @@map("white_label_configs")
-}
-
-// ---------------------------------------------------------------------------
-// Phase 12: Commission Ledger (SS Zentronics marketplace unification)
-// ---------------------------------------------------------------------------
-// Every sale on the marketplace splits between the platform (SS Zentronics,
-// via `commissionAmountMinor`) and the vendor (the selling `Organization`,
-// via `vendorPayoutAmountMinor`). Postgres is the source of truth for this
-// split - LedGix gets the same numbers posted as journal entries (a later
-// checkpoint), never the other way around. `CommissionRule` is versioned and
-// never mutated once a `CommissionLedgerEntry` references it - rate changes
-// are forward-only, so past sales never retroactively reprice (same
-// invariant `FinancialEvent.idempotencyKey` already protects on the payment
-// side of this codebase).
-
-enum CommissionLedgerStatus {
-  ACCRUED
-  PAID
-  REVERSED
-}
-
-enum PayoutStatus {
-  PENDING
-  PAID
-  CANCELLED
-}
-
-/// `organizationId`/`applicationId` both null = platform default rate.
-/// A rule scoped to an `applicationId` overrides its organization's own
-/// rule; a rule scoped only to `organizationId` overrides the platform
-/// default. Resolution order: application -> organization -> platform
-/// default (see `CommissionCalculatorService` once wired in checkpoint 3).
-model CommissionRule {
-  id             String        @id @default(uuid())
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  applicationId  String?
-  application    Application?  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-
-  ratePercent  Decimal @db.Decimal(5, 2)
-  flatFeeMinor Int     @default(0)
-
-  effectiveFrom DateTime  @default(now())
-  effectiveTo   DateTime?
-
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-
-  ledgerEntries CommissionLedgerEntry[]
-
-  @@index([organizationId])
-  @@index([applicationId])
-  @@map("commission_rules")
-}
-
-/// One row per `PaymentTransaction` that generated revenue - the rate is
-/// snapshotted from whichever `CommissionRule` applied at the time (never
-/// re-read live), so later rule changes never move historical numbers.
-/// A refund/chargeback creates a NEW entry linked via `reversalOfId` with
-/// negated amounts rather than mutating the original (matches the
-/// append-only convention already used by `FinancialEvent`/`SyncHistory`) -
-/// `paymentTransactionId` is therefore NOT unique (a reversal row points at
-/// the same transaction as its original); idempotency for the original
-/// ACCRUED entry is enforced in application code instead (one ACCRUED row
-/// per transaction, checked before insert).
-model CommissionLedgerEntry {
-  id                   String             @id @default(uuid())
-  paymentTransactionId String
-  paymentTransaction   PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
-  organizationId       String
-  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ruleId               String?
-  rule                 CommissionRule?    @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-
-  grossAmountMinor        Int
-  commissionAmountMinor   Int
-  vendorPayoutAmountMinor Int
-  currency                String
-
-  status CommissionLedgerStatus @default(ACCRUED)
-
-  reversalOfId String?
-  reversalOf   CommissionLedgerEntry?  @relation("CommissionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
-  reversedBy   CommissionLedgerEntry[] @relation("CommissionReversal")
-
-  payoutId String?
-  payout   Payout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-
-  @@index([paymentTransactionId])
-  @@index([organizationId])
-  @@index([status])
-  @@index([payoutId])
-  @@map("commission_ledger_entries")
-}
-
-/// Manual payout for now (checkpoint 5) - an admin marks accrued entries as
-/// paid, no automated bank transfer. `amountMinor` is the sum of the
-/// entries' `vendorPayoutAmountMinor` at the time the payout was created.
-model Payout {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  amountMinor Int
-  currency    String
-  periodStart DateTime
-  periodEnd   DateTime
-
-  status PayoutStatus @default(PENDING)
-  paidAt DateTime?
-
-  markedPaidById String?
-  markedPaidBy   User?    @relation(fields: [markedPaidById], references: [id], onDelete: SetNull)
-  createdAt      DateTime @default(now())
-
-  entries CommissionLedgerEntry[]
-
-  @@index([organizationId])
-  @@index([status])
-  @@map("payouts")
-}
-
-// ---------------------------------------------------------------------------
-// Phase 12 checkpoint 6: embeddable checkout widget (developer front)
-// ---------------------------------------------------------------------------
-
-enum CheckoutIntentStatus {
-  PENDING
-  COMPLETED
-  EXPIRED
-}
-
-/// A third-party app (e.g. "LedGix Expense Tracker") calls
-/// `POST /public/checkout-intents` with an API key to fetch a hosted
-/// checkout URL for a plan its user picked - this row exists so that URL
-/// can present a payment-provider picker (Stripe incl. Apple/Google Pay
-/// wallet buttons, Easypaisa, JazzCash, ...) BEFORE a specific
-/// `PaymentCheckoutSession` is created, since `PaymentCheckoutSession`
-/// requires a provider to already be chosen. Deliberately short-lived and
-/// throwaway - once `checkoutSessionId` is set the real state lives on the
-/// `PaymentCheckoutSession` this points at, same as everywhere else in this
-/// codebase.
-model CheckoutIntent {
-  id             String       @id @default(uuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  applicationId  String?
-  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-
-  customerEmail String
-  planId        String
-  plan          Plan   @relation(fields: [planId], references: [id], onDelete: Cascade)
-  priceId       String
-  price         Price  @relation(fields: [priceId], references: [id], onDelete: Cascade)
-
-  successUrl String?
-  cancelUrl  String?
-
-  status            CheckoutIntentStatus    @default(PENDING)
-  checkoutSessionId String?                 @unique
-  checkoutSession   PaymentCheckoutSession? @relation(fields: [checkoutSessionId], references: [id], onDelete: SetNull)
-
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime
-  completedAt DateTime?
-
-  @@index([organizationId])
-  @@index([status])
-  @@map("checkout_intents")
 }
