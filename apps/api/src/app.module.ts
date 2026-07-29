@@ -69,6 +69,7 @@ import { PlatformSearchModule } from "./platform-search/platform-search.module";
 import { ReportsModule } from "./reports/reports.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { PlatformAnalyticsModule } from "./platform-analytics/platform-analytics.module";
+import { CommissionsModule } from "./commissions/commissions.module";
 
 @Module({
   imports: [
@@ -164,6 +165,7 @@ import { PlatformAnalyticsModule } from "./platform-analytics/platform-analytics
     ReportsModule,
     ReviewsModule,
     PlatformAnalyticsModule,
+    CommissionsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

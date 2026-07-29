@@ -5,7 +5,10 @@ import {
   type CommissionRule,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { AuditService } from "../audit/audit.service";
+import type { RequestMeta } from "../common/utils/request-meta.util";
 import { computeCommissionSplit, reverseCommissionSplit } from "./commission-calculator.util";
+import type { CreateCommissionRuleDto } from "./dto/create-commission-rule.dto";
 
 /**
  * The only place that writes `CommissionLedgerEntry` rows. Resolution order
@@ -21,7 +24,49 @@ import { computeCommissionSplit, reverseCommissionSplit } from "./commission-cal
 export class CommissionsService {
   private readonly logger = new Logger(CommissionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  async listRules(): Promise<CommissionRule[]> {
+    return this.prisma.commissionRule.findMany({ orderBy: { effectiveFrom: "desc" } });
+  }
+
+  /** Rules are versioned and immutable - "updating" one is really creating
+   * a new one, so old `CommissionLedgerEntry` rows keep pointing at the
+   * rate that was actually in effect when they were recorded. */
+  async createRule(
+    dto: CreateCommissionRuleDto,
+    userId: string,
+    meta: RequestMeta,
+  ): Promise<CommissionRule> {
+    const rule = await this.prisma.commissionRule.create({
+      data: {
+        organizationId: dto.organizationId,
+        applicationId: dto.applicationId,
+        ratePercent: dto.ratePercent,
+        flatFeeMinor: dto.flatFeeMinor ?? 0,
+        createdById: userId,
+      },
+    });
+
+    await this.auditService.record({
+      action: "COMMISSION_RULE_CREATED",
+      userId,
+      organizationId: dto.organizationId,
+      applicationId: dto.applicationId,
+      metadata: {
+        ruleId: rule.id,
+        ratePercent: dto.ratePercent,
+        flatFeeMinor: dto.flatFeeMinor ?? 0,
+      },
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+    });
+
+    return rule;
+  }
 
   async resolveRule(
     organizationId: string,

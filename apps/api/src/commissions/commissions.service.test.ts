@@ -29,7 +29,7 @@ describe("CommissionsService.resolveRule", () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new CommissionsService(prisma as never);
+    service = new CommissionsService(prisma as never, { record: vi.fn() } as never);
   });
 
   it("prefers an application-specific rule over org/platform rules", async () => {
@@ -93,7 +93,7 @@ describe("CommissionsService.recordForTransaction", () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new CommissionsService(prisma as never);
+    service = new CommissionsService(prisma as never, { record: vi.fn() } as never);
   });
 
   it("is idempotent - returns the existing ACCRUED entry without creating a new one", async () => {

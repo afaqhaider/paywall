@@ -576,6 +576,9 @@ enum AuditAction {
   REVIEW_REPORT_RESOLVED
   REPORT_REQUESTED
   WHITE_LABEL_CONFIG_UPDATED
+  COMMISSION_RULE_CREATED
+  PAYOUT_CREATED
+  PAYOUT_MARKED_PAID
 }
 
 // ---------------------------------------------------------------------------
