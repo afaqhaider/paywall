@@ -1390,6 +1390,7 @@ model User {
   email           String    @unique
   passwordHash    String?
   googleId        String?   @unique
+  githubId        String?   @unique
   emailVerified   Boolean   @default(false)
   emailVerifiedAt DateTime?
 
@@ -1407,7 +1408,6 @@ model User {
   updatedAt DateTime @updatedAt
 
   sessions                     Session[]
-  emailVerificationTokens      EmailVerificationToken[]
   passwordResetTokens          PasswordResetToken[]
   organizationMemberships      OrganizationMember[]
   auditLogs                    AuditLog[]
@@ -1430,8 +1430,8 @@ model User {
   deviceRegistrations          DeviceRegistration[]
   entitlementGrantEvents       EntitlementGrantEvent[]
   developerProfile             DeveloperProfile?
-  sentDeveloperInvitations     DeveloperInvitation[]    @relation("DeveloperInvitationsSent")
-  acceptedDeveloperInvitations DeveloperInvitation[]    @relation("DeveloperInvitationsAccepted")
+  sentDeveloperInvitations     DeveloperInvitation[]   @relation("DeveloperInvitationsSent")
+  acceptedDeveloperInvitations DeveloperInvitation[]   @relation("DeveloperInvitationsAccepted")
   createdEnvironmentVariables  EnvironmentVariable[]
   createdOAuthApplications     OAuthApplication[]
   createdWebhookEndpoints      WebhookEndpoint[]
@@ -1444,10 +1444,10 @@ model User {
   financialIntegrations        FinancialIntegration[]
   erpconnections               ERPConnection[]
   platformAdmin                PlatformAdmin?
-  grantedPlatformAdmins        PlatformAdmin[]          @relation("PlatformAdminGrantedBy")
-  revokedPlatformAdmins        PlatformAdmin[]          @relation("PlatformAdminRevokedBy")
-  adminImpersonationsStarted   ImpersonationSession[]   @relation("ImpersonationAdmin")
-  impersonationsReceived       ImpersonationSession[]   @relation("ImpersonationTarget")
+  grantedPlatformAdmins        PlatformAdmin[]         @relation("PlatformAdminGrantedBy")
+  revokedPlatformAdmins        PlatformAdmin[]         @relation("PlatformAdminRevokedBy")
+  adminImpersonationsStarted   ImpersonationSession[]  @relation("ImpersonationAdmin")
+  impersonationsReceived       ImpersonationSession[]  @relation("ImpersonationTarget")
   updatedPlatformSettings      PlatformSetting[]
   updatedFeatureFlags          FeatureFlag[]
   updatedMessageTemplates      MessageTemplate[]
@@ -1478,19 +1478,6 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
-}
-
-model EmailVerificationToken {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-  @@map("email_verification_tokens")
 }
 
 model PasswordResetToken {
@@ -2754,8 +2741,8 @@ model DeveloperProfile {
 
 /// Email-based invitation onto an Application's team (`ApplicationMember`
 /// on accept). Token is hashed the same way as every other one-shot token
-/// in this codebase (EmailVerificationToken, PasswordResetToken) - the
-/// plaintext is only ever in the invite link, never persisted.
+/// in this codebase (PasswordResetToken) - the plaintext is only ever in
+/// the invite link, never persisted.
 model DeveloperInvitation {
   id            String      @id @default(uuid())
   applicationId String
@@ -3329,7 +3316,7 @@ model PlatformAdmin {
 /// and the target user), so one model covers "Impersonate customer",
 /// "Impersonate developer", "Generate login link", and "Impersonation
 /// history" at once. Hashed the same way as every other one-shot token in
-/// this codebase (EmailVerificationToken, DeveloperInvitation, ...).
+/// this codebase (PasswordResetToken, DeveloperInvitation, ...).
 model ImpersonationSession {
   id           String @id @default(uuid())
   adminUserId  String

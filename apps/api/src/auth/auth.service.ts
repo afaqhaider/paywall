@@ -6,22 +6,18 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type { Session, User } from "@prisma/client";
+import type { Prisma, Session, User } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
 import { AuditService } from "../audit/audit.service";
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../common/utils/password.util";
 import { generateOpaqueToken, hashOpaqueToken } from "../common/utils/token.util";
 import type { RequestMeta } from "../common/utils/request-meta.util";
-import {
-  ACCESS_TOKEN_TTL_MS,
-  EMAIL_VERIFICATION_TTL_MS,
-  PASSWORD_RESET_TTL_MS,
-  REFRESH_TOKEN_TTL_MS,
-} from "./auth.constants";
+import { ACCESS_TOKEN_TTL_MS, PASSWORD_RESET_TTL_MS, REFRESH_TOKEN_TTL_MS } from "./auth.constants";
 import type { RegisterDto } from "./dto/register.dto";
 import type { LoginDto } from "./dto/login.dto";
 import type { GoogleProfile } from "./strategies/google.strategy";
+import type { GithubProfile } from "./strategies/github.strategy";
 
 export interface PublicUser {
   id: string;
@@ -80,6 +76,10 @@ export class AuthService {
 
     const passwordHash = await hashPassword(dto.password);
 
+    // No transactional email provider is wired up in this environment (see
+    // MailService), so there is no working verification-link flow to gate
+    // on - every account is trusted at creation instead of being left
+    // permanently unverified.
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -87,6 +87,8 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         displayName: dto.firstName ? `${dto.firstName} ${dto.lastName ?? ""}`.trim() : undefined,
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
       },
     });
 
@@ -96,66 +98,7 @@ export class AuthService {
       ...meta,
     });
 
-    await this.issueEmailVerification(user, meta);
-
     return toPublicUser(user);
-  }
-
-  async issueEmailVerification(user: User, meta: RequestMeta): Promise<void> {
-    const { token, tokenHash } = generateOpaqueToken();
-
-    await this.prisma.emailVerificationToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
-      },
-    });
-
-    await this.auditService.record({
-      action: "EMAIL_VERIFICATION_REQUESTED",
-      userId: user.id,
-      ...meta,
-    });
-
-    const verifyUrl = `${this.webOrigin()}/verify-email?token=${token}`;
-    await this.mailService.sendVerificationEmail(user.email, verifyUrl);
-  }
-
-  async resendVerification(userId: string, meta: RequestMeta): Promise<void> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-
-    if (user.emailVerified) {
-      throw new BadRequestException("Email is already verified");
-    }
-
-    await this.issueEmailVerification(user, meta);
-  }
-
-  async verifyEmail(rawToken: string, meta: RequestMeta): Promise<void> {
-    const tokenHash = hashOpaqueToken(rawToken);
-    const record = await this.prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
-
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      throw new BadRequestException("Invalid or expired verification token");
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.emailVerificationToken.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.user.update({
-        where: { id: record.userId },
-        data: { emailVerified: true, emailVerifiedAt: new Date() },
-      }),
-    ]);
-
-    await this.auditService.record({
-      action: "EMAIL_VERIFIED",
-      userId: record.userId,
-      ...meta,
-    });
   }
 
   async login(dto: LoginDto, meta: RequestMeta): Promise<TokenPair | TwoFactorChallenge> {
@@ -204,25 +147,43 @@ export class AuthService {
   }
 
   /**
-   * Finds-or-creates a User for a verified Google identity. Auto-links by
-   * email if an existing password account matches - Google has already
-   * verified that email, so this is the accepted trade-off (documented at
-   * the point this feature was requested): whoever controls that Google
-   * account gets in, without ever knowing the original password.
+   * Finds-or-creates a User for a verified OAuth identity (Google, GitHub).
+   * Auto-links by email if an existing password account matches - the
+   * provider has already verified that email, so this is the accepted
+   * trade-off (documented at the point Google login was first added):
+   * whoever controls that provider account gets in, without ever knowing
+   * the original password.
    */
-  async loginWithGoogle(profile: GoogleProfile, meta: RequestMeta): Promise<TokenPair> {
-    let user = await this.prisma.user.findUnique({ where: { googleId: profile.googleId } });
+  private async loginWithOAuthProfile(
+    idField: "googleId" | "githubId",
+    providerId: string,
+    profile: {
+      email: string;
+      emailVerified: boolean;
+      firstName?: string;
+      lastName?: string;
+      avatarUrl?: string;
+    },
+    meta: RequestMeta,
+  ): Promise<TokenPair> {
+    const providerWhere: Prisma.UserWhereUniqueInput =
+      idField === "googleId" ? { googleId: providerId } : { githubId: providerId };
+
+    let user = await this.prisma.user.findUnique({ where: providerWhere });
 
     if (!user) {
       const existingByEmail = await this.prisma.user.findUnique({
         where: { email: profile.email },
       });
 
+      const providerIdData: { googleId?: string; githubId?: string } =
+        idField === "googleId" ? { googleId: providerId } : { githubId: providerId };
+
       if (existingByEmail) {
         user = await this.prisma.user.update({
           where: { id: existingByEmail.id },
           data: {
-            googleId: profile.googleId,
+            ...providerIdData,
             emailVerified: existingByEmail.emailVerified || profile.emailVerified,
             emailVerifiedAt:
               existingByEmail.emailVerifiedAt ?? (profile.emailVerified ? new Date() : undefined),
@@ -233,7 +194,7 @@ export class AuthService {
         user = await this.prisma.user.create({
           data: {
             email: profile.email,
-            googleId: profile.googleId,
+            ...providerIdData,
             emailVerified: profile.emailVerified,
             emailVerifiedAt: profile.emailVerified ? new Date() : undefined,
             firstName: profile.firstName,
@@ -258,6 +219,14 @@ export class AuthService {
     await this.auditService.record({ action: "LOGIN_SUCCEEDED", userId: user.id, ...meta });
 
     return pair;
+  }
+
+  async loginWithGoogle(profile: GoogleProfile, meta: RequestMeta): Promise<TokenPair> {
+    return this.loginWithOAuthProfile("googleId", profile.googleId, profile, meta);
+  }
+
+  async loginWithGithub(profile: GithubProfile, meta: RequestMeta): Promise<TokenPair> {
+    return this.loginWithOAuthProfile("githubId", profile.githubId, profile, meta);
   }
 
   async issueTokenPair(

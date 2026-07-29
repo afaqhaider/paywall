@@ -24,14 +24,6 @@ export class MailService {
     return Promise.resolve();
   }
 
-  async sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
-    await this.send({
-      to,
-      subject: "Verify your SS Zentronics Platform email",
-      body: `Welcome! Verify your email by visiting:\n${verifyUrl}\n\nThis link expires in 24 hours.`,
-    });
-  }
-
   async sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
     await this.send({
       to,

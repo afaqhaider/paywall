@@ -17,9 +17,9 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { GoogleConfiguredGuard, type GoogleProfile } from "./strategies/google.strategy";
+import { GithubConfiguredGuard, type GithubProfile } from "./strategies/github.strategy";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
-import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -79,11 +79,36 @@ export class AuthController {
   }
 
   @Public()
+  @Get("github")
+  @UseGuards(GithubConfiguredGuard, AuthGuard("github"))
+  async githubAuth(): Promise<void> {
+    // Same shape as googleAuth() above: GithubConfiguredGuard rejects
+    // cleanly if unconfigured; otherwise AuthGuard("github") redirects to
+    // GitHub before this body ever runs.
+  }
+
+  @Public()
+  @Get("github/callback")
+  @UseGuards(GithubConfiguredGuard, AuthGuard("github"))
+  async githubCallback(
+    @Req() req: Request & { user: GithubProfile },
+    @Res() res: Response,
+  ): Promise<void> {
+    const pair = await this.authService.loginWithGithub(req.user, extractRequestMeta(req));
+    setRefreshCookies(res, pair.refreshToken, {
+      maxAgeMs: pair.refreshTokenExpiresAt.getTime() - Date.now(),
+    });
+
+    const webOrigin = this.configService.get<string>("WEB_ORIGIN", "http://localhost:3000");
+    res.redirect(`${webOrigin}/dashboard`);
+  }
+
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("register")
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
     const user = await this.authService.register(dto, extractRequestMeta(req));
-    return { user, message: "Registration successful. Check your email to verify your account." };
+    return { user, message: "Registration successful. You can log in now." };
   }
 
   @Public()
@@ -120,23 +145,6 @@ export class AuthController {
     const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
     await this.authService.logout(refreshToken, extractRequestMeta(req));
     clearRefreshCookies(res);
-  }
-
-  @Public()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post("verify-email")
-  @HttpCode(HttpStatus.OK)
-  async verifyEmail(@Body() dto: VerifyEmailDto, @Req() req: Request) {
-    await this.authService.verifyEmail(dto.token, extractRequestMeta(req));
-    return { message: "Email verified successfully." };
-  }
-
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @Post("resend-verification")
-  @HttpCode(HttpStatus.OK)
-  async resendVerification(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
-    await this.authService.resendVerification(user.id, extractRequestMeta(req));
-    return { message: "Verification email sent." };
   }
 
   @Public()

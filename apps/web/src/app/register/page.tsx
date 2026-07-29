@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { Alert, Button, Input, Label } from "@paywall/ui";
 import { AuthCard } from "../../components/auth-card";
 import { GoogleSignInButton } from "../../components/google-signin-button";
+import { GithubSignInButton } from "../../components/github-signin-button";
 import { ApiError } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 
@@ -34,13 +35,13 @@ export default function RegisterPage() {
 
   if (done) {
     return (
-      <AuthCard title="Check your email" subtitle="We sent you a verification link.">
+      <AuthCard title="Account created" subtitle="You're all set.">
         <Alert variant="success">
-          Registration successful. Verify your email, then{" "}
+          Registration successful.{" "}
           <Link href="/login" className="underline">
-            log in
-          </Link>
-          .
+            Log in
+          </Link>{" "}
+          to continue.
         </Alert>
       </AuthCard>
     );
@@ -106,6 +107,7 @@ export default function RegisterPage() {
           <div className="h-px flex-1 bg-slate-200" />
         </div>
         <GoogleSignInButton label="Sign up with Google" />
+        <GithubSignInButton label="Sign up with GitHub" />
         <p className="text-center text-sm text-slate-500">
           Already have an account?{" "}
           <Link href="/login" className="font-medium text-slate-900 underline">

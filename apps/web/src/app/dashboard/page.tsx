@@ -25,7 +25,6 @@ function DashboardContent() {
   const [newOrgName, setNewOrgName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resendMessage, setResendMessage] = useState<string | null>(null);
 
   async function handleCreateOrg(event: FormEvent) {
     event.preventDefault();
@@ -45,20 +44,6 @@ function DashboardContent() {
     }
   }
 
-  async function handleResendVerification() {
-    setResendMessage(null);
-    try {
-      const res = await authedFetch<{ message: string }>("/auth/resend-verification", {
-        method: "POST",
-      });
-      setResendMessage(res.message);
-    } catch (err) {
-      setResendMessage(
-        err instanceof ApiError ? err.message : "Could not resend verification email.",
-      );
-    }
-  }
-
   return (
     <>
       <DashboardNav>
@@ -72,16 +57,6 @@ function DashboardContent() {
         <h1 className="text-2xl font-semibold text-slate-900">
           Welcome, {user?.displayName ?? user?.email}
         </h1>
-
-        {user && !user.emailVerified ? (
-          <Alert variant="destructive" className="mt-4 flex items-center justify-between gap-4">
-            <span>Your email isn&apos;t verified yet.</span>
-            <Button size="sm" variant="outline" onClick={handleResendVerification}>
-              Resend verification email
-            </Button>
-          </Alert>
-        ) : null}
-        {resendMessage ? <Alert className="mt-4">{resendMessage}</Alert> : null}
 
         <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
           <div className="md:col-span-2">

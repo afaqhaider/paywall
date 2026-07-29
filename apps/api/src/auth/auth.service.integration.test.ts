@@ -61,7 +61,10 @@ describe("AuthService (integration)", () => {
     );
 
     expect(user.email).toBe(registerEmail);
-    expect(user.emailVerified).toBe(false);
+    // No transactional email provider is wired up, so there is no working
+    // verification-link flow to gate on - every account is trusted at
+    // creation (see AuthService.register).
+    expect(user.emailVerified).toBe(true);
 
     await expect(
       authService.register({ email: registerEmail, password: "SuperSecret123!" }, meta),
@@ -109,27 +112,6 @@ describe("AuthService (integration)", () => {
     await expect(authService.refresh(rotated.refreshToken, meta)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-  });
-
-  it("verifies email with a valid token and rejects a reused one", async () => {
-    const registerEmail = email("verify");
-    await authService.register({ email: registerEmail, password: "SuperSecret123!" }, meta);
-
-    const record = await prisma.emailVerificationToken.findFirstOrThrow({
-      where: { user: { email: registerEmail } },
-      orderBy: { createdAt: "desc" },
-    });
-
-    // We only have the hash in the DB (the raw token was emailed, not stored) —
-    // re-derive a fresh token/hash pair isn't possible, so instead validate the
-    // service's rejection path using an unrelated, syntactically-valid token.
-    await expect(
-      authService.verifyEmail("not-a-real-token-00000000000000", meta),
-    ).rejects.toThrow();
-
-    const user = await prisma.user.findUniqueOrThrow({ where: { email: registerEmail } });
-    expect(user.emailVerified).toBe(false);
-    expect(record.usedAt).toBeNull();
   });
 
   it("resets a forgotten password and revokes existing sessions", async () => {
