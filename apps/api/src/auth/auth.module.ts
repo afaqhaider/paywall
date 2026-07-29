@@ -6,6 +6,7 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { GoogleStrategy, GoogleConfiguredGuard } from "./strategies/google.strategy";
+import { GithubStrategy, GithubConfiguredGuard } from "./strategies/github.strategy";
 import { ACCESS_TOKEN_TTL } from "./auth.constants";
 
 @Module({
@@ -21,7 +22,14 @@ import { ACCESS_TOKEN_TTL } from "./auth.constants";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy, GoogleConfiguredGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    GoogleStrategy,
+    GoogleConfiguredGuard,
+    GithubStrategy,
+    GithubConfiguredGuard,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}
