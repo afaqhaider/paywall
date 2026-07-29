@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import {
+  CommissionLedgerStatus,
   ERPConnectionStatus,
   FinancialEventType,
   FinancialProviderType,
@@ -290,6 +291,19 @@ export class SyncEngineService implements OnModuleInit {
     const customerReference =
       fields.customerReference ?? financialEvent.customerId ?? financialEvent.organizationId;
 
+    // A marketplace sale has a `CommissionLedgerEntry` (checkpoints 2/3) -
+    // when one exists, the invoice posts as a 3-line journal (customer /
+    // revenue / vendor) instead of a flat invoice. Non-marketplace sales
+    // (no commission rule configured) fall back to the original behavior.
+    const commissionEntry = fields.transactionId
+      ? await this.prisma.commissionLedgerEntry.findFirst({
+          where: {
+            paymentTransactionId: fields.transactionId,
+            status: CommissionLedgerStatus.ACCRUED,
+          },
+        })
+      : null;
+
     // Idempotency keys are derived from the `FinancialSync.id` (one per
     // sub-step, since each is a separate LedGix resource) so that if this
     // whole sync attempt is retried by the sweep, a real LedGix would not
@@ -304,6 +318,13 @@ export class SyncEngineService implements OnModuleInit {
         description: fields.description,
         taxMinor: fields.taxMinor,
         discountMinor: fields.discountMinor,
+        commissionSplit: commissionEntry
+          ? {
+              vendorReference: commissionEntry.organizationId,
+              commissionAmountMinor: commissionEntry.commissionAmountMinor,
+              vendorPayoutAmountMinor: commissionEntry.vendorPayoutAmountMinor,
+            }
+          : undefined,
       },
       `${financialSyncId}:invoice`,
     );

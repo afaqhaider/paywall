@@ -33,16 +33,38 @@ import type { ERPConnectionCredentials } from "./erp-connection-credentials.inte
  *     double-creating an invoice/receipt/payment.
  *
  * POST /api/{version}/invoices
- *   request:  { customerReference: string, amountMinor: number, currency: string, description?: string, taxMinor?: number, discountMinor?: number }
+ *   request:  { customerReference: string, amountMinor: number, currency: string, description?: string, taxMinor?: number, discountMinor?: number, commissionAmountMinor?: number, vendorPayoutAmountMinor?: number, vendorReference?: string }
  *   response: { id: string, referenceNumber: string, status: "draft" | "open" }
+ *
+ *   The `commissionAmountMinor`/`vendorPayoutAmountMinor`/`vendorReference`
+ *   fields are this platform's marketplace-commission extension to the
+ *   documented invoice shape (see SS Zentronics merge plan checkpoint 4):
+ *   when present, LedGix is expected to post a 3-line journal for the sale
+ *   instead of a flat single-line invoice - Customer debit `amountMinor`,
+ *   Revenue credit `commissionAmountMinor`, Vendor credit
+ *   `vendorPayoutAmountMinor`. Omitted entirely for non-marketplace sales
+ *   (no commission ledger entry exists), in which case LedGix falls back to
+ *   its original flat invoice behavior.
  *
  * POST /api/{version}/invoices/{erpInvoiceId}/receipts
  *   request:  { amountMinor: number, currency: string }
  *   response: { id: string, referenceNumber: string }
  *
+ *   Receipt = Bank/payment-gateway debit `amountMinor`, Customer credit
+ *   `amountMinor` - the customer's invoice balance is cleared once the
+ *   gateway actually settles funds.
+ *
  * POST /api/{version}/receipts/{erpReceiptId}/payments
  *   request:  { method: string, reference?: string }
  *   response: { referenceNumber: string }
+ *
+ * POST /api/{version}/payouts
+ *   request:  { vendorReference: string, amountMinor: number, currency: string }
+ *   response: { id: string, referenceNumber: string }
+ *
+ *   Payout = Vendor debit `amountMinor` (clears their accrued payable),
+ *   Bank credit `amountMinor` (cash leaving the platform's account) - posted
+ *   when an admin marks a `Payout` row as paid (checkpoint 5).
  *
  * Any non-2xx response is treated as a failure; the response body (truncated)
  * is folded into the thrown Error's message so callers/logs can see why.
@@ -63,6 +85,20 @@ export interface CreateInvoiceData {
   taxMinor?: number;
   /** Best-effort sum of active SubscriptionCoupon discounts at the time this event was recorded. */
   discountMinor?: number;
+  /** Present only for marketplace sales with a `CommissionLedgerEntry` -
+   * triggers the 3-line journal split documented above instead of a flat
+   * invoice. */
+  commissionSplit?: {
+    vendorReference: string;
+    commissionAmountMinor: number;
+    vendorPayoutAmountMinor: number;
+  };
+}
+
+export interface RecordPayoutData {
+  vendorReference: string;
+  amountMinor: number;
+  currency: string;
 }
 
 export interface CreateReceiptData {
@@ -89,6 +125,11 @@ interface LedgixReceiptResponse {
 }
 
 interface LedgixPaymentResponse {
+  referenceNumber: string;
+}
+
+interface LedgixPayoutResponse {
+  id: string;
   referenceNumber: string;
 }
 
@@ -153,6 +194,17 @@ export class LedgixErpConnectorService {
     return { referenceNumber: response.referenceNumber };
   }
 
+  async recordPayout(
+    connection: ERPConnectionCredentials,
+    data: RecordPayoutData,
+    idempotencyKey: string,
+  ): Promise<{ erpPayoutId: string; referenceNumber: string }> {
+    const body = this.mapPayoutRequest(data);
+    const raw = await this.request(connection, "POST", "payouts", body, idempotencyKey);
+    const response = this.mapPayoutResponse(raw);
+    return { erpPayoutId: response.id, referenceNumber: response.referenceNumber };
+  }
+
   // ---- mappers: internal shape -> documented LedGix request/response shape ----
 
   private mapInvoiceRequest(data: CreateInvoiceData): object {
@@ -163,6 +215,13 @@ export class LedgixErpConnectorService {
       description: data.description,
       taxMinor: data.taxMinor ?? 0,
       discountMinor: data.discountMinor ?? 0,
+      ...(data.commissionSplit
+        ? {
+            vendorReference: data.commissionSplit.vendorReference,
+            commissionAmountMinor: data.commissionSplit.commissionAmountMinor,
+            vendorPayoutAmountMinor: data.commissionSplit.vendorPayoutAmountMinor,
+          }
+        : {}),
     };
   }
 
@@ -200,6 +259,22 @@ export class LedgixErpConnectorService {
       throw new Error("LedGix payment response missing referenceNumber");
     }
     return { referenceNumber: value.referenceNumber };
+  }
+
+  private mapPayoutRequest(data: RecordPayoutData): object {
+    return {
+      vendorReference: data.vendorReference,
+      amountMinor: data.amountMinor,
+      currency: data.currency,
+    };
+  }
+
+  private mapPayoutResponse(raw: unknown): LedgixPayoutResponse {
+    const value = raw as Partial<LedgixPayoutResponse> | undefined;
+    if (!value?.id || !value.referenceNumber) {
+      throw new Error("LedGix payout response missing id/referenceNumber");
+    }
+    return { id: value.id, referenceNumber: value.referenceNumber };
   }
 
   /**
