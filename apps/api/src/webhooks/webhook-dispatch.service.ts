@@ -3,6 +3,7 @@ import { createHmac } from "crypto";
 import { WebhookDeliveryStatus, WebhookEndpointStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { decryptSecret } from "../common/utils/encryption.util";
+import { secrets } from "../config/secrets";
 
 const MAX_ATTEMPTS = 5;
 const MAX_BACKOFF_MINUTES = 60;
@@ -28,7 +29,7 @@ export class WebhookDispatchService implements OnModuleInit {
   onModuleInit(): void {
     // Skip the background sweep in tests so it doesn't keep the process
     // alive or race against a test's own timers/mocked DB state.
-    if (process.env.NODE_ENV === "test") {
+    if (secrets.nodeEnv === "test") {
       return;
     }
 

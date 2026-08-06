@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import { randomBytes } from "crypto";
 import { CSRF_COOKIE_NAME } from "../guards/csrf.guard";
+import { secrets } from "../../config/secrets";
 
 export const REFRESH_COOKIE_NAME = "refresh_token";
 
@@ -9,7 +10,7 @@ interface CookieOptions {
 }
 
 function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
+  return secrets.nodeEnv === "production";
 }
 
 export function setRefreshCookies(

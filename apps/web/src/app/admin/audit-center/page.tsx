@@ -17,6 +17,7 @@ import {
 } from "@paywall/ui";
 import { useAuth } from "../../../lib/auth-context";
 import { ApiError, getAccessToken } from "../../../lib/api-client";
+import { env } from "../../../lib/env";
 import type { CursorResult } from "../../../lib/cursor-types";
 import type { AdminAuditLogEntry } from "../../../lib/admin-audit-types";
 
@@ -92,7 +93,7 @@ export default function AdminAuditCenterPage() {
     setExporting(true);
     setError(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+      const apiUrl = env.apiUrl;
       const res = await fetch(`${apiUrl}/admin/audit-log/export${buildQuery()}`, {
         headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : undefined,
         credentials: "include",

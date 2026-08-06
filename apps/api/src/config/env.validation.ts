@@ -64,6 +64,27 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNotEmpty()
   GOOGLE_CALLBACK_URL?: string;
+
+  // Firebase provisioning (optional - this project has no Firebase project
+  // yet). Leave all empty; see apps/api/src/config/secrets.ts and
+  // docs/SECRETS.md. Deliberately not validated as a set (e.g. requiring
+  // all-or-nothing) so partial provisioning during setup doesn't crash
+  // the app - secrets.ts's `firebase.configured` gates actual use.
+  @IsOptional()
+  @IsNotEmpty()
+  FIREBASE_PROJECT_ID?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  FIREBASE_CLIENT_EMAIL?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  FIREBASE_PRIVATE_KEY?: string;
+
+  @IsOptional()
+  @IsNotEmpty()
+  FIREBASE_SECRET_MANAGER_PROJECT_ID?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

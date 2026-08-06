@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { secrets } from "../../config/secrets";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH_BYTES = 32;
@@ -14,7 +15,7 @@ export interface EncryptedPayload {
 }
 
 function loadKey(): Buffer {
-  const raw = process.env.APP_SECRET_ENCRYPTION_KEY;
+  const raw = secrets.appSecretEncryptionKey;
   if (!raw) {
     throw new Error("APP_SECRET_ENCRYPTION_KEY is not set");
   }

@@ -4,9 +4,9 @@ import {
   type CanActivate,
   type ExecutionContext,
 } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
 import { Strategy, type Profile, type VerifyCallback } from "passport-google-oauth20";
+import { secrets } from "../../config/secrets";
 
 export interface GoogleProfile {
   googleId: string;
@@ -30,22 +30,15 @@ export interface GoogleProfile {
 export class GoogleStrategy extends PassportStrategy(Strategy, "google") {
   readonly configured: boolean;
 
-  constructor(configService: ConfigService) {
-    const clientID = configService.get<string>("GOOGLE_CLIENT_ID");
-    const clientSecret = configService.get<string>("GOOGLE_CLIENT_SECRET");
-    const callbackURL = configService.get<string>(
-      "GOOGLE_CALLBACK_URL",
-      "http://localhost:4000/auth/google/callback",
-    );
-
+  constructor() {
     super({
-      clientID: clientID || "not-configured",
-      clientSecret: clientSecret || "not-configured",
-      callbackURL,
+      clientID: secrets.google.clientId || "not-configured",
+      clientSecret: secrets.google.clientSecret || "not-configured",
+      callbackURL: secrets.google.callbackUrl,
       scope: ["email", "profile"],
     });
 
-    this.configured = Boolean(clientID && clientSecret);
+    this.configured = secrets.google.configured;
   }
 
   validate(

@@ -3,6 +3,7 @@ import { ImpersonationTargetRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthService, type TokenPair } from "../auth/auth.service";
+import { secrets } from "../config/secrets";
 import { PASSWORD_RESET_TTL_MS } from "../auth/auth.constants";
 import { generateOpaqueToken, hashOpaqueToken } from "../common/utils/token.util";
 import { normalizePageSize } from "../common/utils/cursor-pagination.util";
@@ -220,7 +221,7 @@ export class AdminSupportService {
   }
 
   private webOrigin(): string {
-    return process.env.WEB_ORIGIN ?? "http://localhost:3000";
+    return secrets.webOrigin;
   }
 }
 

@@ -10,6 +10,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { decryptSecret } from "../common/utils/encryption.util";
+import { secrets } from "../config/secrets";
 import { LedgixErpConnectorService } from "../erp-connector/ledgix-erp-connector.service";
 import type { ERPConnectionCredentials } from "../erp-connector/erp-connection-credentials.interface";
 import { readPayloadFields } from "./financial-event-payload.util";
@@ -78,7 +79,7 @@ export class SyncEngineService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    if (process.env.NODE_ENV === "test") {
+    if (secrets.nodeEnv === "test") {
       return;
     }
 

@@ -9,6 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import type { Session, User } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
+import { secrets } from "../config/secrets";
 import { AuditService } from "../audit/audit.service";
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../common/utils/password.util";
 import { generateOpaqueToken, hashOpaqueToken } from "../common/utils/token.util";
@@ -421,6 +422,6 @@ export class AuthService {
   }
 
   private webOrigin(): string {
-    return process.env.WEB_ORIGIN ?? "http://localhost:3000";
+    return secrets.webOrigin;
   }
 }

@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
+import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
@@ -9,6 +9,7 @@ import { ApplicationsModule } from "./applications/applications.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { validateEnv } from "./config/env.validation";
+import { secrets } from "./config/secrets";
 import { HealthModule } from "./health/health.module";
 import { MailModule } from "./mail/mail.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
@@ -76,30 +77,24 @@ import { PlatformAnalyticsModule } from "./platform-analytics/platform-analytics
       isGlobal: true,
       validate: validateEnv,
     }),
-    LoggerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        pinoHttp: {
-          level: config.get<string>("LOG_LEVEL", "info"),
-          transport:
-            config.get<string>("NODE_ENV") !== "production"
-              ? { target: "pino-pretty", options: { singleLine: true } }
-              : undefined,
-          redact: ["req.headers.authorization", "req.headers.cookie"],
-          autoLogging: true,
-        },
-      }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: secrets.logLevel,
+        transport:
+          secrets.nodeEnv !== "production"
+            ? { target: "pino-pretty", options: { singleLine: true } }
+            : undefined,
+        redact: ["req.headers.authorization", "req.headers.cookie"],
+        autoLogging: true,
+      },
     }),
-    ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        throttlers: [
-          {
-            ttl: config.get<number>("RATE_LIMIT_TTL_MS", 60_000),
-            limit: config.get<number>("RATE_LIMIT_LIMIT", 100),
-          },
-        ],
-      }),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: secrets.rateLimitTtlMs,
+          limit: secrets.rateLimitLimit,
+        },
+      ],
     }),
     PrismaModule,
     MailModule,

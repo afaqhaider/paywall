@@ -20,6 +20,11 @@ out/
 client_secret*.json
 google-services*.json
 
+# Local-only secret material (downloaded OAuth secrets, Firebase service
+# account keys, etc.) - never commit anything in here. Real values only
+# ever belong in .env (also gitignored) or the deploy-time secret manager.
+secrets/local/
+
 # Logs
 *.log
 npm-debug.log*

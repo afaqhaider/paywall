@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { JobStatus, type Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { secrets } from "../config/secrets";
 import { JobProcessorRegistryService } from "./job-processor-registry.service";
 import { computeNextRun } from "./schedule.util";
 
@@ -30,7 +31,7 @@ export class JobWorkerService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    if (process.env.NODE_ENV === "test") {
+    if (secrets.nodeEnv === "test") {
       return;
     }
     this.sweepHandle = setInterval(() => {

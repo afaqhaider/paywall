@@ -1,6 +1,6 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
+import { secrets } from "../config/secrets";
 import { AuthModule } from "../auth/auth.module";
 import { TwoFactorController } from "./two-factor.controller";
 import { TwoFactorLoginController } from "./two-factor-login.controller";
@@ -14,12 +14,8 @@ import { TwoFactorService } from "./two-factor.service";
     // challenge token AuthService.login() signs; AuthModule doesn't export
     // its JwtModule, so this configures an equivalent instance rather than
     // touching auth.module.ts.
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.getOrThrow<string>("JWT_ACCESS_SECRET"),
-      }),
+    JwtModule.register({
+      secret: secrets.jwtAccessSecret,
     }),
   ],
   controllers: [TwoFactorController, TwoFactorLoginController],

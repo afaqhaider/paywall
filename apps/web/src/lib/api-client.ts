@@ -1,4 +1,6 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { env } from "./env";
+
+export const API_URL = env.apiUrl;
 
 let inMemoryAccessToken: string | null = null;
 

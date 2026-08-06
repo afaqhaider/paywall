@@ -6,10 +6,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ApplicationMemberRole, DeveloperInvitationStatus } from "@prisma/client";
-import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { MailService } from "../mail/mail.service";
+import { secrets } from "../config/secrets";
 import { generateOpaqueToken, hashOpaqueToken } from "../common/utils/token.util";
 import type { RequestMeta } from "../common/utils/request-meta.util";
 import type { AuthenticatedUser } from "../auth/strategies/jwt.strategy";
@@ -23,7 +23,6 @@ export class InvitationsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly mailService: MailService,
-    private readonly configService: ConfigService,
   ) {}
 
   async create(applicationId: string, dto: CreateInvitationDto, userId: string, meta: RequestMeta) {
@@ -216,8 +215,7 @@ export class InvitationsService {
   }
 
   private buildAcceptUrl(token: string): string {
-    const webOrigin = this.configService.get<string>("WEB_ORIGIN") ?? "http://localhost:3000";
-    return `${webOrigin}/invitations/accept?token=${token}`;
+    return `${secrets.webOrigin}/invitations/accept?token=${token}`;
   }
 
   private safeSelect() {

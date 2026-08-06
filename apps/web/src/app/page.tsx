@@ -6,11 +6,12 @@ import type { HealthStatus } from "@paywall/types";
 import { PLATFORM_NAME } from "@paywall/shared";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@paywall/ui";
 import { useAuth } from "../lib/auth-context";
+import { env } from "../lib/env";
 
 type FetchState =
   { kind: "loading" } | { kind: "error" } | { kind: "success"; health: HealthStatus };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = env.apiUrl;
 
 export default function LandingPage() {
   const [state, setState] = useState<FetchState>({ kind: "loading" });
@@ -39,8 +40,7 @@ export default function LandingPage() {
 
   const apiOnline = state.kind === "success";
   const dbUp = state.kind === "success" && state.health.database === "up";
-  const environment =
-    state.kind === "success" ? state.health.environment : (process.env.NODE_ENV ?? "development");
+  const environment = state.kind === "success" ? state.health.environment : env.nodeEnv;
   const version = state.kind === "success" ? state.health.version : "-";
 
   return (

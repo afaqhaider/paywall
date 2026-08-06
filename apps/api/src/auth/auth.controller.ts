@@ -11,7 +11,6 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
@@ -26,6 +25,7 @@ import { Public } from "../common/decorators/public.decorator";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { CsrfGuard } from "../common/guards/csrf.guard";
 import { extractRequestMeta } from "../common/utils/request-meta.util";
+import { secrets } from "../config/secrets";
 import {
   clearRefreshCookies,
   REFRESH_COOKIE_NAME,
@@ -47,10 +47,7 @@ function respondWithTokenPair(res: Response, pair: TokenPair) {
 
 @Controller("auth")
 export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   @Public()
   @Get("google")
@@ -73,8 +70,7 @@ export class AuthController {
       maxAgeMs: pair.refreshTokenExpiresAt.getTime() - Date.now(),
     });
 
-    const webOrigin = this.configService.get<string>("WEB_ORIGIN", "http://localhost:3000");
-    res.redirect(`${webOrigin}/dashboard`);
+    res.redirect(`${secrets.webOrigin}/dashboard`);
   }
 
   @Public()
