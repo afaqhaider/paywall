@@ -53,18 +53,18 @@ Marketplace all built on top of it.
 
 ## Tech stack
 
-| Layer           | Technology                                         |
-| --------------- | -------------------------------------------------- |
-| Frontend        | Next.js, React, TypeScript, TailwindCSS, shadcn/ui |
-| Backend         | NestJS, TypeScript                                 |
-| Database        | PostgreSQL                                         |
-| ORM             | Prisma                                             |
+| Layer           | Technology                                                                 |
+| --------------- | -------------------------------------------------------------------------- |
+| Frontend        | Next.js, React, TypeScript, TailwindCSS, shadcn/ui                         |
+| Backend         | NestJS, TypeScript                                                         |
+| Database        | PostgreSQL                                                                 |
+| ORM             | Prisma                                                                     |
 | Auth            | JWT access tokens + rotating opaque refresh tokens, Google OAuth, TOTP 2FA |
-| Package manager | pnpm                                               |
-| Monorepo        | Turborepo                                          |
-| Containers      | Docker, Docker Compose                             |
-| Code quality    | ESLint, Prettier, Husky, lint-staged               |
-| Testing         | Vitest, Playwright                                 |
+| Package manager | pnpm                                                                       |
+| Monorepo        | Turborepo                                                                  |
+| Containers      | Docker, Docker Compose                                                     |
+| Code quality    | ESLint, Prettier, Husky, lint-staged                                       |
+| Testing         | Vitest, Playwright                                                         |
 
 **Runs 100% locally.** No Vercel, Railway, Supabase, Firebase, or other
 managed cloud services are required to run it. Only official Docker
@@ -112,6 +112,7 @@ Platform Admin account, and available scripts.
 - [Architecture](./docs/ARCHITECTURE.md) — phase-by-phase history, domain
   module map, data model, frontend portal structure
 - [Getting Started](./docs/GETTING_STARTED.md)
+- [Runtime API (`/v1/*`)](./docs/RUNTIME_API.md) — the SDK-facing contract
 - [Secrets & config](./docs/SECRETS.md)
 
 ## License

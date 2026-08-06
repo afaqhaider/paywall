@@ -164,7 +164,7 @@ export class RuntimeAuthorizationService {
     applicationId: string,
     key: string,
     amount = 1,
-  ): Promise<void> {
+  ): Promise<UsageSnapshot> {
     const definition = await this.prisma.entitlementDefinition.findUniqueOrThrow({
       where: { applicationId_key: { applicationId, key } },
     });
@@ -183,6 +183,8 @@ export class RuntimeAuthorizationService {
       },
       data: { value: 0 },
     });
+
+    return this.getUsage(organizationId, applicationId, key);
   }
 
   async validateApiKey(rawKey: string) {
