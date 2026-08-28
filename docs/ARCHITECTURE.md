@@ -19,11 +19,14 @@ paywall/
 ├── packages/
 │   ├── shared/  Framework-agnostic shared utilities & constants
 │   ├── ui/      Shared shadcn/ui-based React component library
-│   └── types/   Shared TypeScript contracts between web and api
+│   ├── types/   Shared TypeScript contracts between web and api
+│   └── sdk/     Server-side SDK for third-party integrators (see docs/SDK.md)
 ├── docker/      Dockerfiles for each deployable service
 ├── docs/        Architecture & operational documentation
 └── .github/     CI workflows
 ```
+
+The developer-embed front is `packages/sdk` (published as `sszentronics-sdk`) - see [`docs/SDK.md`](./SDK.md) for what it covers, what backend surface it's built on, and what it can't do in this repo (checkout - kept exclusive to the `marketplace` fork).
 
 ## Why these choices
 

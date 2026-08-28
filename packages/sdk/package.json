@@ -1,0 +1,41 @@
+{
+  "name": "sszentronics-sdk",
+  "version": "0.1.0",
+  "description": "Server-side SDK for integrating checkout, entitlements, licensing, and webhooks against the SS Zentronics platform API.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit",
+    "test": "VITE_CJS_IGNORE_WARNING=true vitest run",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "checkout",
+    "entitlements",
+    "licensing",
+    "webhooks",
+    "sdk"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
