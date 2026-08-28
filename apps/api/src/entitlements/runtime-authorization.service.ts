@@ -18,7 +18,7 @@ export interface UsageSnapshot {
 }
 
 /**
- * The runtime SDK surface: what every SS Zentronics application actually
+ * The runtime SDK surface: what every SSCodeAxis application actually
  * calls to answer "can I do this?" in milliseconds. Every method here is a
  * read (or a single small write) against denormalized fast-path tables -
  * never a walk through Subscription -> Plan -> PlanFeature.

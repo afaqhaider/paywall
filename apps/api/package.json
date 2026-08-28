@@ -2,7 +2,7 @@
   "name": "api",
   "version": "0.1.0",
   "private": true,
-  "description": "SS Zentronics Platform API (NestJS)",
+  "description": "SSCodeAxis API (NestJS)",
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",

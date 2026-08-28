@@ -48,7 +48,7 @@ describe("LandingPage", () => {
       </AuthProvider>,
     );
 
-    expect(screen.getByText("SS Zentronics Platform")).toBeTruthy();
+    expect(screen.getByText("SSCodeAxis")).toBeTruthy();
 
     await waitFor(() => {
       expect(screen.getByText("Online")).toBeTruthy();

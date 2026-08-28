@@ -29,7 +29,7 @@ async function bootstrap(): Promise<void> {
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
-      .setTitle("SS Zentronics Platform API")
+      .setTitle("SSCodeAxis API")
       .setDescription("Developer Portal API reference")
       .setVersion(secrets.platformVersion)
       .addBearerAuth()

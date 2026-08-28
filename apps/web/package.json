@@ -2,7 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
-  "description": "SS Zentronics Platform web app (Next.js)",
+  "description": "SSCodeAxis web app (Next.js)",
   "scripts": {
     "build": "next build",
     "dev": "next dev",

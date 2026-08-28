@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: PLATFORM_NAME,
-  description: "Identity, organization & application registry platform for SS Zentronics.",
+  description: "Identity, organization & application registry platform for SSCodeAxis.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

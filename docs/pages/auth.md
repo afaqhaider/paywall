@@ -1,6 +1,6 @@
 # Auth Pages
 
-These are the public-facing, unauthenticated entry points into the SS Zentronics Platform web app (`apps/web`, Next.js App Router) - the landing page and the standalone login/registration/password-reset flows - except where noted (the invitation-accept page requires a signed-in session).
+These are the public-facing, unauthenticated entry points into the SSCodeAxis web app (`apps/web`, Next.js App Router) - the landing page and the standalone login/registration/password-reset flows - except where noted (the invitation-accept page requires a signed-in session).
 
 ## /
 

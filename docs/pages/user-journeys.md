@@ -1,6 +1,6 @@
 # User Journeys: Customer, Vendor, Developer
 
-This doc walks through the three main ways someone uses the SS Zentronics Platform, and which pages (documented in the other files in this folder) they touch along the way. It's a map, not a spec — some pages listed below may turn out not to apply cleanly to a given role; those are flagged inline as **(TBD)** for follow-up discussion rather than silently resolved here.
+This doc walks through the three main ways someone uses the SSCodeAxis, and which pages (documented in the other files in this folder) they touch along the way. It's a map, not a spec — some pages listed below may turn out not to apply cleanly to a given role; those are flagged inline as **(TBD)** for follow-up discussion rather than silently resolved here.
 
 Three roles, three very different relationships to the platform:
 
@@ -59,9 +59,9 @@ Pages **not applicable** to a developer: `/portal/**`, `/admin/**`, and (in this
 
 ---
 
-## Platform Owner journey (SS Zentronics)
+## Platform Owner journey (SSCodeAxis)
 
-This is the internal, platform-admin role — SS Zentronics staff, not a customer/vendor/developer. It's the only role that spans and oversees the other three rather than living inside one of them. Everything here is gated by `/admin/layout.tsx`'s platform-admin check (see [admin-core.md](admin-core.md)).
+This is the internal, platform-admin role — SSCodeAxis staff, not a customer/vendor/developer. It's the only role that spans and oversees the other three rather than living inside one of them. Everything here is gated by `/admin/layout.tsx`'s platform-admin check (see [admin-core.md](admin-core.md)).
 
 1. **Login** — there's no separate admin login page; a platform owner uses the exact same [`/login`](auth.md#login) as everyone else. What makes them an admin is a flag on their `User` record, granted via [`/admin/settings`](admin-core.md#adminsettings) by an existing platform admin (or seeded directly in the database for the first one). Once logged in, `/admin/**` simply becomes reachable instead of redirecting away.
 2. **See the big picture** — [`/admin/executive-dashboard`](admin-financial.md#adminexecutive-dashboard) for top-line business KPIs (revenue, growth, active subscriptions) and [`/admin/platform-intelligence`](admin-financial.md#adminplatform-intelligence) for deeper BI/marketplace-performance signals across the whole platform.

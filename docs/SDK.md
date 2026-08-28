@@ -1,6 +1,6 @@
 # SDK
 
-`packages/sdk` (published as `sszentronics-sdk`) is the server-side client library for integrating entitlements, licensing, devices, and webhooks against this platform's API. It's how the "developer front" embeds the platform rather than hand-rolling HTTP calls.
+`packages/sdk` (published as `@sscodeaxis/paywall-sdk`) is the server-side client library for integrating entitlements, licensing, devices, and webhooks against this platform's API. It's how the "developer front" embeds the platform rather than hand-rolling HTTP calls.
 
 Full usage docs, a quickstart, and error-handling guidance live in [`packages/sdk/README.md`](../packages/sdk/README.md) — this page is the pointer from the rest of the docs set, not a duplicate.
 

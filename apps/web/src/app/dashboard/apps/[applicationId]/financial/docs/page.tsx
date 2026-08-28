@@ -476,7 +476,7 @@ Content-Type: application/json
   "testedAt": "2026-07-28T14:32:10.000Z",
   "company": {
     "externalCompanyId": "COMP-0001",
-    "name": "SS Zentronics Pvt Ltd",
+    "name": "SSCodeAxis Pvt Ltd",
     "baseCurrency": "USD"
   }
 }`}

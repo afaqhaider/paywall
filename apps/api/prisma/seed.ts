@@ -9,10 +9,10 @@ async function main() {
   const passwordHash = await hashPassword(DEMO_PASSWORD);
 
   const owner = await prisma.user.upsert({
-    where: { email: "owner@demo.sszentronics.local" },
+    where: { email: "owner@demo.sscodeaxis.local" },
     update: {},
     create: {
-      email: "owner@demo.sszentronics.local",
+      email: "owner@demo.sscodeaxis.local",
       passwordHash,
       firstName: "Dana",
       lastName: "Owner",
@@ -23,10 +23,10 @@ async function main() {
   });
 
   const member = await prisma.user.upsert({
-    where: { email: "member@demo.sszentronics.local" },
+    where: { email: "member@demo.sscodeaxis.local" },
     update: {},
     create: {
-      email: "member@demo.sszentronics.local",
+      email: "member@demo.sscodeaxis.local",
       passwordHash,
       firstName: "Milo",
       lastName: "Member",
@@ -37,9 +37,9 @@ async function main() {
   });
 
   const organization = await prisma.organization.upsert({
-    where: { slug: "ss-zentronics-demo" },
+    where: { slug: "sscodeaxis-demo" },
     update: {},
-    create: { name: "SS Zentronics Demo", slug: "ss-zentronics-demo" },
+    create: { name: "SSCodeAxis Demo", slug: "sscodeaxis-demo" },
   });
 
   await prisma.organizationMember.upsert({

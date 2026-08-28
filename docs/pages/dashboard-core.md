@@ -1,6 +1,6 @@
 # Developer Portal (Dashboard) - Core Pages
 
-This document covers the "Developer Portal" section of the SS Zentronics Platform web app
+This document covers the "Developer Portal" section of the SSCodeAxis web app
 (`apps/web/src/app/dashboard/**`): the pages an organization member uses to manage their
 applications, products/plans, coupons, trials, features, usage limits, devices, licenses,
 customers, subscriptions, and entitlements. Marketplace-facing pages, billing/payment-provider

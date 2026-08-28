@@ -5,7 +5,7 @@ import { LicenseKeysClient } from "./licenses";
 import { DevicesClient } from "./devices";
 
 /**
- * Server-side SDK for integrating against the SS Zentronics platform API.
+ * Server-side SDK for integrating against the SSCodeAxis API.
  * See README.md for a quickstart and the "External requirements" section
  * for what needs to be filled in (API base URL, API key) before this can
  * talk to a real deployment.

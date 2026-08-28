@@ -57,7 +57,7 @@ function CreateApplicationContent() {
       <main className="mx-auto max-w-xl px-6 py-10">
         <h1 className="text-2xl font-semibold text-slate-900">Create application</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Register a new application in the SS Zentronics ecosystem.
+          Register a new application in the SSCodeAxis ecosystem.
         </p>
 
         <Card className="mt-6">

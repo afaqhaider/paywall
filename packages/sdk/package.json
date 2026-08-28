@@ -1,7 +1,7 @@
 {
-  "name": "sszentronics-sdk",
+  "name": "@sscodeaxis/paywall-sdk",
   "version": "0.1.0",
-  "description": "Server-side SDK for integrating checkout, entitlements, licensing, and webhooks against the SS Zentronics platform API.",
+  "description": "Server-side SDK for integrating checkout, entitlements, licensing, and webhooks against the SSCodeAxis API.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

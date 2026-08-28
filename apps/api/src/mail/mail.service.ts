@@ -27,7 +27,7 @@ export class MailService {
   async sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
     await this.send({
       to,
-      subject: "Reset your SS Zentronics Platform password",
+      subject: "Reset your SSCodeAxis password",
       body: `Reset your password by visiting:\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request this, you can ignore this email.`,
     });
   }
@@ -39,7 +39,7 @@ export class MailService {
   ): Promise<void> {
     await this.send({
       to,
-      subject: `You've been invited to join ${applicationName} on SS Zentronics Platform`,
+      subject: `You've been invited to join ${applicationName} on SSCodeAxis`,
       body: `You've been invited to join the "${applicationName}" application as a developer. Accept your invitation by visiting:\n${acceptUrl}\n\nThis link expires in 7 days.`,
     });
   }

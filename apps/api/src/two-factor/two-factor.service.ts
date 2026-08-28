@@ -21,7 +21,7 @@ import {
 } from "./totp.util";
 
 const RECOVERY_CODE_COUNT = 8;
-const ISSUER = "SSZentronics";
+const ISSUER = "SSCodeAxis";
 
 @Injectable()
 export class TwoFactorService {

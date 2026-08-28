@@ -1,6 +1,6 @@
 # Marketplace Storefront
 
-The `/marketplace/**` routes are the **only fully public section** of the SS Zentronics Platform web app. There is no dashboard/admin/portal chrome here — each page renders its own lightweight `MarketplaceHeader` instead of `AdminNav`/`DashboardNav`, and none of the pages are wrapped in `ProtectedRoute`. Anyone can browse, search, and read reviews without logging in, similar to a public app store.
+The `/marketplace/**` routes are the **only fully public section** of the SSCodeAxis web app. There is no dashboard/admin/portal chrome here — each page renders its own lightweight `MarketplaceHeader` instead of `AdminNav`/`DashboardNav`, and none of the pages are wrapped in `ProtectedRoute`. Anyone can browse, search, and read reviews without logging in, similar to a public app store.
 
 Regardless of what other visibility levels or statuses exist elsewhere in the platform (`DRAFT`, `PRIVATE`, `INVITE_ONLY`, `INTERNAL`, etc.), **only listings with `status: PUBLISHED` and `visibility: PUBLIC` are ever returned** by the storefront API (`apps/api/src/marketplace/marketplace-store.service.ts`, `PUBLIC_WHERE`). This filter is applied server-side on every query — browse, search, categories, and detail — so a non-public listing simply does not exist as far as these pages are concerned (its detail page 404s, per `NotFoundException("Listing not found or not publicly available")`).
 

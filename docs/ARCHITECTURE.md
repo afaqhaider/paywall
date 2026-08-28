@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **SS Zentronics Platform** ("paywall") is a monorepo housing every service
+The **SSCodeAxis** ("paywall") is a monorepo housing every service
 required to run a self-hosted RevenueCat-style subscription, licensing and
 entitlement platform. This document reflects the state through Phase 3
 (Application Registry) - Phase 1 (foundation), Phase 2 (Identity &
@@ -26,7 +26,7 @@ paywall/
 └── .github/     CI workflows
 ```
 
-The developer-embed front is `packages/sdk` (published as `sszentronics-sdk`) - see [`docs/SDK.md`](./SDK.md) for what it covers, what backend surface it's built on, and what it can't do in this repo (checkout - kept exclusive to the `marketplace` fork).
+The developer-embed front is `packages/sdk` (published as `@sscodeaxis/paywall-sdk`) - see [`docs/SDK.md`](./SDK.md) for what it covers, what backend surface it's built on, and what it can't do in this repo (checkout - kept exclusive to the `marketplace` fork).
 
 ## Why these choices
 

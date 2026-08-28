@@ -47,7 +47,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthCard title="Create your account" subtitle="Join the SS Zentronics Platform">
+    <AuthCard title="Create your account" subtitle="Join the SSCodeAxis">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {error ? <Alert variant="destructive">{error}</Alert> : null}
         <div className="grid grid-cols-2 gap-3">

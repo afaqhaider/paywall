@@ -1,13 +1,13 @@
-# sszentronics-sdk
+# @sscodeaxis/paywall-sdk
 
-Server-side SDK for integrating checkout, entitlements, licensing, and webhooks against the SS Zentronics platform API. Node.js only (uses the built-in `fetch` on Node 18+, and Node's `crypto` module for webhook verification) — this is meant to run in your backend, never in a browser, since it's authenticated with a secret API key.
+Server-side SDK for integrating checkout, entitlements, licensing, and webhooks against the SSCodeAxis API. Node.js only (uses the built-in `fetch` on Node 18+, and Node's `crypto` module for webhook verification) — this is meant to run in your backend, never in a browser, since it's authenticated with a secret API key.
 
 > **Before this can talk to a real deployment**, see [External requirements](#external-requirements) below — a couple of values are placeholders until you fill them in.
 
 ## Install
 
 ```bash
-npm install sszentronics-sdk
+npm install @sscodeaxis/paywall-sdk
 ```
 
 (Not yet published — see External requirements.)
@@ -15,7 +15,7 @@ npm install sszentronics-sdk
 ## Quickstart
 
 ```ts
-import { PaywallSDK } from "sszentronics-sdk";
+import { PaywallSDK } from "@sscodeaxis/paywall-sdk";
 
 const sdk = new PaywallSDK({
   apiKey: process.env.PLATFORM_API_KEY!, // Dashboard -> API Keys
@@ -86,7 +86,7 @@ const device = await sdk.devices.register({
 ### Webhooks
 
 ```ts
-import { constructWebhookEvent } from "sszentronics-sdk";
+import { constructWebhookEvent } from "@sscodeaxis/paywall-sdk";
 
 // Express example — you MUST use the raw body, not an already-JSON-parsed one:
 app.post("/webhooks/platform", express.raw({ type: "application/json" }), (req, res) => {
@@ -120,7 +120,7 @@ Every method throws:
 - `SdkConfigError` — client-side misuse (missing config, bad webhook signature). Never thrown for an API response.
 
 ```ts
-import { SdkApiError } from "sszentronics-sdk";
+import { SdkApiError } from "@sscodeaxis/paywall-sdk";
 
 try {
   await sdk.entitlements.incrementUsage("api-calls");

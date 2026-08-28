@@ -128,7 +128,7 @@ export class SdkConfigService {
           platform,
           language: "kotlin",
           snippet: [
-            `import com.sszentronics.sdk.SSZClient`,
+            `import com.sscodeaxis.sdk.SSZClient`,
             ``,
             `val client = SSZClient.Builder()`,
             `    .apiKey(BuildConfig.SSZ_API_KEY)`,

@@ -1,7 +1,7 @@
-# SS Zentronics Platform (paywall)
+# SSCodeAxis (paywall)
 
 A self-hosted, RevenueCat-style **subscription, licensing & entitlement
-platform** for the SS Zentronics ecosystem of applications.
+platform** for the SSCodeAxis ecosystem of applications.
 
 > **Status: Phase 3 - Application Registry.** Foundation (Phase 1), Identity
 > & Authentication (Phase 2), and the Application Registry (Phase 3) are

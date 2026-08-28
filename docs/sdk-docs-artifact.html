@@ -1,0 +1,623 @@
+<title>SS Zentronics SDK</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+  :root {
+    --ink: #14151a;
+    --paper: #fbfbfa;
+    --paper-raised: #ffffff;
+    --muted: #6b6f7a;
+    --muted-2: #9498a3;
+    --accent: #5b3df0;
+    --accent-ink: #ffffff;
+    --accent-soft: #ede9fe;
+    --accent-soft-ink: #3d2ba8;
+    --line: #e4e4ea;
+    --line-soft: #eeeef2;
+    --danger: #b3261e;
+    --danger-soft: #fbeaea;
+    --ok: #1a7d4a;
+    --ok-soft: #e6f4ec;
+    --code-bg: #14151a;
+    --code-ink: #e7e7ee;
+    --code-accent: #a996ff;
+    --shadow: 0 1px 2px rgba(20, 21, 26, 0.04), 0 8px 24px rgba(20, 21, 26, 0.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eceef2;
+      --paper: #101014;
+      --paper-raised: #17181e;
+      --muted: #9a9dab;
+      --muted-2: #6d707c;
+      --accent: #8f7bff;
+      --accent-ink: #101014;
+      --accent-soft: #241f3d;
+      --accent-soft-ink: #c7bcff;
+      --line: #262832;
+      --line-soft: #1d1e26;
+      --danger: #ff8b83;
+      --danger-soft: #33191a;
+      --ok: #6fd6a0;
+      --ok-soft: #12291e;
+      --code-bg: #0a0a0d;
+      --code-ink: #e7e7ee;
+      --code-accent: #b7abff;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eceef2;
+    --paper: #101014;
+    --paper-raised: #17181e;
+    --muted: #9a9dab;
+    --muted-2: #6d707c;
+    --accent: #8f7bff;
+    --accent-ink: #101014;
+    --accent-soft: #241f3d;
+    --accent-soft-ink: #c7bcff;
+    --line: #262832;
+    --line-soft: #1d1e26;
+    --danger: #ff8b83;
+    --danger-soft: #33191a;
+    --ok: #6fd6a0;
+    --ok-soft: #12291e;
+    --code-bg: #0a0a0d;
+    --code-ink: #e7e7ee;
+    --code-accent: #b7abff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent-soft); color: var(--accent-soft-ink); }
+
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  code, kbd {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.88em;
+  }
+  :not(pre) > code {
+    background: var(--accent-soft);
+    color: var(--accent-soft-ink);
+    padding: 0.12em 0.4em;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  h1, h2, h3, h4 { text-wrap: balance; font-weight: 600; letter-spacing: -0.01em; }
+
+  /* ---------- Shell layout ---------- */
+  .shell {
+    max-width: 1220px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 56px;
+    padding: 0 32px 96px;
+  }
+  @media (max-width: 880px) {
+    .shell { grid-template-columns: 1fr; gap: 24px; padding: 0 20px 64px; }
+    .nav { position: static !important; order: 2; }
+  }
+
+  /* ---------- Header ---------- */
+  .topbar {
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .topbar-inner {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink);
+  }
+  .brand-mark {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: grid;
+    place-items: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 600;
+    font-size: 13px;
+    flex: none;
+  }
+  .brand-sub {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 13px;
+    padding-left: 10px;
+    margin-left: 10px;
+    border-left: 1px solid var(--line);
+  }
+  .topbar-right { display: flex; align-items: center; gap: 14px; font-size: 13.5px; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 100px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2); flex: none; }
+  .pill.warn { color: #9a5b00; border-color: #f0d9a8; background: #fdf6e8; }
+  .pill.warn .pill-dot { background: #d9932e; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .pill.warn { color: #f0c374; border-color: #4a3a17; background: #241c0d; }
+  }
+  :root[data-theme="dark"] .pill.warn { color: #f0c374; border-color: #4a3a17; background: #241c0d; }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 56px 32px 40px;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  .hero h1 {
+    margin: 0 0 14px;
+    font-size: clamp(28px, 4vw, 40px);
+    line-height: 1.12;
+    max-width: 20ch;
+  }
+  .hero p {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--muted);
+    font-size: 17px;
+  }
+  .hero-install {
+    margin-top: 26px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 11px 16px;
+    border-radius: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13.5px;
+  }
+  .hero-install .prompt { color: var(--muted-2); }
+  .hero-install .cmd { color: var(--code-accent); }
+
+  /* ---------- Nav ---------- */
+  .nav { position: sticky; top: 28px; align-self: start; padding-top: 40px; }
+  .nav-group { margin-bottom: 22px; }
+  .nav-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    margin: 0 0 8px;
+  }
+  .nav ul { list-style: none; margin: 0; padding: 0; }
+  .nav li a {
+    display: block;
+    padding: 5px 0;
+    font-size: 14px;
+    color: var(--muted);
+    border-left: 2px solid transparent;
+    padding-left: 12px;
+    margin-left: -13px;
+  }
+  .nav li a:hover { color: var(--ink); text-decoration: none; }
+  .nav li a.unavailable::after {
+    content: "";
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--danger);
+    margin-left: 7px;
+    vertical-align: middle;
+    opacity: 0.7;
+  }
+
+  /* ---------- Main content ---------- */
+  main { min-width: 0; padding-top: 40px; }
+  .section { padding: 52px 0; border-bottom: 1px solid var(--line-soft); }
+  .section:last-child { border-bottom: none; }
+  .section h2 {
+    font-size: 24px;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    scroll-margin-top: 24px;
+  }
+  .section .kicker {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--muted-2);
+    margin: 0 0 18px;
+  }
+  .section > p.lede { color: var(--muted); max-width: 68ch; font-size: 15.5px; margin: 0 0 22px; }
+  .prose p { max-width: 68ch; }
+  .prose p + p { margin-top: 12px; }
+
+  h3.sub {
+    font-size: 16px;
+    margin: 30px 0 10px;
+    padding-top: 2px;
+  }
+
+  /* code blocks */
+  pre {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-size: 13.3px;
+    line-height: 1.65;
+    box-shadow: var(--shadow);
+    border-left: 3px solid var(--accent);
+    margin: 14px 0 22px;
+  }
+  pre code { background: none; color: inherit; padding: 0; white-space: pre; }
+  .tok-kw { color: #ff9d7a; }
+  .tok-str { color: #9be9a8; }
+  .tok-com { color: var(--muted-2); font-style: italic; }
+  .tok-fn { color: var(--code-accent); }
+  .tok-num { color: #ffd479; }
+
+  /* callouts */
+  .callout {
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 18px 0;
+    font-size: 14.5px;
+    border: 1px solid var(--line);
+    display: flex;
+    gap: 12px;
+  }
+  .callout strong { display: block; margin-bottom: 3px; font-size: 13.5px; letter-spacing: 0.01em; }
+  .callout.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+  .callout.danger strong { color: var(--danger); }
+  .callout.info { background: var(--accent-soft); border-color: transparent; color: var(--accent-soft-ink); }
+  .callout.info strong { color: var(--accent-soft-ink); }
+  .callout-icon { flex: none; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+
+  /* method cards */
+  .method {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper-raised);
+    margin: 16px 0;
+    overflow: hidden;
+  }
+  .method-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .method-head code {
+    font-size: 14px;
+    font-weight: 500;
+    background: none;
+    color: var(--ink);
+    padding: 0;
+  }
+  .method-verb {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent-soft-ink);
+    letter-spacing: 0.02em;
+  }
+  .method-route {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .method-body { padding: 14px 18px 18px; font-size: 14.5px; color: var(--muted); }
+  .method-body p { margin: 0 0 10px; }
+  .method-body pre { margin: 10px 0 0; }
+
+  /* table */
+  .tbl-wrap { overflow-x: auto; margin: 14px 0 22px; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-2); font-weight: 600; background: var(--line-soft); }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: normal; }
+  .status-ok, .status-bad {
+    display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 13.5px;
+  }
+  .status-ok { color: var(--ok); }
+  .status-bad { color: var(--danger); }
+  .status-ok::before, .status-bad::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+  .status-ok::before { background: var(--ok); }
+  .status-bad::before { background: var(--danger); }
+
+  footer {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+    border-top: 1px solid var(--line);
+    color: var(--muted-2);
+    font-size: 13px;
+  }
+</style>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">SZ</span>
+      SS Zentronics
+      <span class="brand-sub">SDK Reference</span>
+    </div>
+    <div class="topbar-right">
+      <span class="pill"><span class="pill-dot"></span>v0.1.0 · unreleased</span>
+      <span class="pill warn"><span class="pill-dot"></span>Not yet on npm</span>
+    </div>
+  </div>
+</div>
+
+<div class="hero">
+  <p class="hero-eyebrow">packages/sdk · sszentronics-sdk</p>
+  <h1>Entitlements, licensing, devices, and webhooks &mdash; from your own backend.</h1>
+  <p>A small, dependency-free Node.js client for the platform's API-key-authenticated runtime endpoints. Answer &ldquo;can this customer do X&rdquo; in one call, validate a license key someone typed in, register a device, and verify inbound webhooks &mdash; without hand-rolling HTTP.</p>
+  <div class="hero-install"><span class="prompt">$</span> <span class="cmd">npm install sszentronics-sdk</span></div>
+</div>
+
+<div class="shell">
+  <nav class="nav" aria-label="Sections">
+    <div class="nav-group">
+      <p class="nav-title">Start here</p>
+      <ul>
+        <li><a href="#quickstart">Quickstart</a></li>
+        <li><a href="#checkout">Checkout <span class="visually-hidden"></span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <p class="nav-title">Reference</p>
+      <ul>
+        <li><a href="#entitlements">Entitlements &amp; usage</a></li>
+        <li><a href="#licenses">License keys</a></li>
+        <li><a href="#devices">Devices</a></li>
+        <li><a href="#webhooks">Webhooks</a></li>
+        <li><a href="#errors">Error handling</a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <p class="nav-title">Ship it</p>
+      <ul>
+        <li><a href="#requirements">External requirements</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <section class="section" id="quickstart">
+      <p class="kicker">01 &middot; Setup</p>
+      <h2>Quickstart</h2>
+      <p class="lede">One client, four resource groups. Configure it once with your API key and the platform's base URL.</p>
+      <pre><code><span class="tok-kw">import</span> { PaywallSDK } <span class="tok-kw">from</span> <span class="tok-str">"sszentronics-sdk"</span>;
+
+<span class="tok-kw">const</span> sdk = <span class="tok-kw">new</span> <span class="tok-fn">PaywallSDK</span>({
+  apiKey: process.env.PLATFORM_API_KEY!,  <span class="tok-com">// Dashboard -> API Keys</span>
+  baseUrl: process.env.PLATFORM_API_URL!, <span class="tok-com">// e.g. https://api.yourdomain.com</span>
+});</code></pre>
+      <div class="callout info">
+        <span class="callout-icon">i</span>
+        <div><strong>Server-side only.</strong> This SDK is authenticated with a secret API key &mdash; it must run in your backend, never shipped to a browser.</div>
+      </div>
+    </section>
+
+    <section class="section" id="checkout">
+      <p class="kicker">02 &middot; Checkout</p>
+      <h2>sdk.checkout.*</h2>
+      <div class="callout danger">
+        <span class="callout-icon">&times;</span>
+        <div>
+          <strong>Not available against this repo&rsquo;s API</strong>
+          Wraps <code>/public/plans</code> and <code>/checkout-intents</code> &mdash; the embeddable-checkout-widget flow. That feature was built during this platform&rsquo;s merge-plan work, then deliberately reverted out of this repo and kept exclusive to the separate <code>marketplace</code> fork. These methods will <strong>404</strong> here. Included for parity &mdash; point <code>baseUrl</code> at a <code>marketplace</code> deployment if you need checkout.
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Method</th><th>Availability</th></tr></thead>
+          <tbody>
+            <tr><td><code>listPlans()</code></td><td><span class="status-bad">not in this repo</span></td></tr>
+            <tr><td><code>createIntent(input)</code></td><td><span class="status-bad">not in this repo</span></td></tr>
+            <tr><td><code>getIntent(id)</code></td><td><span class="status-bad">not in this repo</span></td></tr>
+            <tr><td><code>completeIntent(id, providerId)</code></td><td><span class="status-bad">not in this repo</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="entitlements">
+      <p class="kicker">03 &middot; Reference</p>
+      <h2>Entitlements &amp; usage</h2>
+      <p class="lede">Wraps <code>apps/api/src/entitlements/public-runtime.controller.ts</code> &mdash; new in this SDK&rsquo;s release. <code>RuntimeAuthorizationService</code> was already built as, in its own words, &ldquo;the runtime SDK surface,&rdquo; but had no API-key-authenticated route until now. Requires an application-scoped API key.</p>
+
+      <div class="method">
+        <div class="method-head"><span class="method-verb">GET</span><span class="method-route">/public/runtime/entitlements/:key</span><code>sdk.entitlements.check(key)</code></div>
+        <div class="method-body">
+          <p>Is this entitlement key allowed for your application right now? Returns <code>{ allowed, numberValue, textValue, isUnlimited }</code>.</p>
+          <pre><code><span class="tok-kw">const</span> { allowed } = <span class="tok-kw">await</span> sdk.entitlements.<span class="tok-fn">check</span>(<span class="tok-str">"advanced-reports"</span>);
+<span class="tok-kw">if</span> (!allowed) <span class="tok-kw">throw new</span> <span class="tok-fn">Error</span>(<span class="tok-str">"Not entitled to this feature"</span>);</code></pre>
+        </div>
+      </div>
+
+      <div class="method">
+        <div class="method-head"><span class="method-verb">GET</span><span class="method-route">/public/runtime/entitlements/:key/usage</span><code>sdk.entitlements.getUsage(key)</code></div>
+        <div class="method-body">
+          <p>Current usage/limit/remaining for a metered key. Returns <code>{ used, limit, remaining, isUnlimited }</code>.</p>
+        </div>
+      </div>
+
+      <div class="method">
+        <div class="method-head"><span class="method-verb">POST</span><span class="method-route">/public/runtime/entitlements/:key/increment</span><code>sdk.entitlements.incrementUsage(key, amount?)</code></div>
+        <div class="method-body"><p>Records usage. Throws <code>SdkApiError</code> (403) if this would exceed the limit &mdash; enforced server-side inside a transaction, never trust a client-side count.</p></div>
+      </div>
+
+      <div class="method">
+        <div class="method-head"><span class="method-verb">POST</span><span class="method-route">/public/runtime/entitlements/:key/decrement</span><code>sdk.entitlements.decrementUsage(key, amount?)</code></div>
+        <div class="method-body"><p>Reverses previously recorded usage &mdash; a refund, an undone action. Floors at zero.</p></div>
+      </div>
+    </section>
+
+    <section class="section" id="licenses">
+      <p class="kicker">03 &middot; Reference</p>
+      <h2>License keys</h2>
+      <div class="method">
+        <div class="method-head"><span class="method-verb">POST</span><span class="method-route">/public/runtime/license-keys/validate</span><code>sdk.licenseKeys.validate(key)</code></div>
+        <div class="method-body">
+          <p>Validates a license key a customer typed in &mdash; activation status, expiry, and activation-limit checks included. Never throws for an invalid key; check <code>.valid</code>.</p>
+          <pre><code><span class="tok-kw">const</span> result = <span class="tok-kw">await</span> sdk.licenseKeys.<span class="tok-fn">validate</span>(userEnteredKey);
+<span class="tok-kw">if</span> (result.valid) {
+  console.<span class="tok-fn">log</span>(result.licenseId, result.status, result.expiresAt);
+} <span class="tok-kw">else</span> {
+  <span class="tok-com">// "not_found" | "inactive" | "expired" | "activation_limit_reached"</span>
+  console.<span class="tok-fn">log</span>(<span class="tok-str">"Invalid:"</span>, result.reason);
+}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="devices">
+      <p class="kicker">03 &middot; Reference</p>
+      <h2>Devices</h2>
+      <div class="method">
+        <div class="method-head"><span class="method-verb">POST</span><span class="method-route">/public/devices</span><code>sdk.devices.register(input)</code></div>
+        <div class="method-body">
+          <p>Registers &mdash; or re-checks-in &mdash; a device. Upserts on <code>deviceId</code>, safe to call on every app start. If <code>licenseId</code> is set and that license has a <code>deviceLimit</code>, a genuinely new device enforces it; an already-known device re-checking in is never rejected.</p>
+          <pre><code><span class="tok-kw">const</span> device = <span class="tok-kw">await</span> sdk.devices.<span class="tok-fn">register</span>({
+  deviceId: <span class="tok-str">"stable-client-generated-id"</span>,
+  platform: <span class="tok-str">"DESKTOP"</span>, <span class="tok-com">// IOS | ANDROID | WEB | DESKTOP | OTHER</span>
+  licenseId: license?.licenseId,
+});</code></pre>
+          <p>Audited under a dedicated <code>ApiKeySystemActorService</code> so API-key-triggered writes are distinguishable in audit history from payment-webhook-triggered ones.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="webhooks">
+      <p class="kicker">03 &middot; Reference</p>
+      <h2>Webhooks</h2>
+      <p class="lede">Verifies and parses inbound webhooks, matching <code>webhook-dispatch.service.ts</code>&rsquo;s signing scheme: <code>HMAC-SHA256(secret, rawBody)</code>, sent as <code>X-Webhook-Signature: sha256=&hellip;</code>.</p>
+      <pre><code><span class="tok-kw">import</span> { constructWebhookEvent } <span class="tok-kw">from</span> <span class="tok-str">"sszentronics-sdk"</span>;
+
+<span class="tok-com">// Express &mdash; MUST use the raw body, not an already-parsed one</span>
+app.<span class="tok-fn">post</span>(<span class="tok-str">"/webhooks/platform"</span>, express.<span class="tok-fn">raw</span>({ type: <span class="tok-str">"application/json"</span> }), (req, res) => {
+  <span class="tok-kw">const</span> event = <span class="tok-fn">constructWebhookEvent</span>(
+    req.body.<span class="tok-fn">toString</span>(<span class="tok-str">"utf8"</span>),
+    {
+      signature: req.<span class="tok-fn">header</span>(<span class="tok-str">"X-Webhook-Signature"</span>),
+      eventType: req.<span class="tok-fn">header</span>(<span class="tok-str">"X-Webhook-Event"</span>),
+      deliveryId: req.<span class="tok-fn">header</span>(<span class="tok-str">"X-Webhook-Delivery-Id"</span>),
+    },
+    process.env.PLATFORM_WEBHOOK_SECRET!,
+  );
+
+  <span class="tok-kw">switch</span> (event.eventType) {
+    <span class="tok-kw">case</span> <span class="tok-str">"subscription.updated"</span>:
+      <span class="tok-com">// handle event.payload</span>
+      <span class="tok-kw">break</span>;
+  }
+  res.<span class="tok-fn">sendStatus</span>(<span class="tok-num">200</span>);
+});</code></pre>
+      <div class="callout danger">
+        <span class="callout-icon">!</span>
+        <div><strong>Hard-fails by design</strong> <code>constructWebhookEvent</code> throws <code>SdkConfigError</code> if the signature is missing, malformed, or doesn&rsquo;t match &mdash; the same pattern as Stripe&rsquo;s <code>constructEvent</code> &mdash; so a handler can&rsquo;t accidentally process an unverified payload.</div>
+      </div>
+    </section>
+
+    <section class="section" id="errors">
+      <p class="kicker">03 &middot; Reference</p>
+      <h2>Error handling</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Error</th><th>Thrown when</th><th>Carries</th></tr></thead>
+          <tbody>
+            <tr><td><code>SdkApiError</code></td><td>Any non-2xx API response</td><td><code>.status</code>, <code>.body</code></td></tr>
+            <tr><td><code>SdkConfigError</code></td><td>Client-side misuse &mdash; missing config, bad webhook signature</td><td><code>.message</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre><code><span class="tok-kw">try</span> {
+  <span class="tok-kw">await</span> sdk.entitlements.<span class="tok-fn">incrementUsage</span>(<span class="tok-str">"api-calls"</span>);
+} <span class="tok-kw">catch</span> (err) {
+  <span class="tok-kw">if</span> (err <span class="tok-kw">instanceof</span> SdkApiError &amp;&amp; err.status === <span class="tok-num">403</span>) {
+    <span class="tok-com">// over limit &mdash; prompt to upgrade</span>
+  }
+  <span class="tok-kw">throw</span> err;
+}</code></pre>
+    </section>
+
+    <section class="section" id="requirements">
+      <p class="kicker">04 &middot; Before you ship</p>
+      <h2>External requirements</h2>
+      <p class="lede">Everything filled in with a placeholder above &mdash; nothing here blocks local development, but these are the real blockers to a public release.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>#</th><th>What</th><th>Needed</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>npm package name</td><td>Confirm final branding before publishing &mdash; <code>sszentronics-sdk</code> isn&rsquo;t reserved or verified available.</td></tr>
+            <tr><td>2</td><td><code>baseUrl</code></td><td>A stable, public API domain &mdash; no default is baked into the client.</td></tr>
+            <tr><td>3</td><td>API key</td><td>Already obtainable today via Dashboard &rarr; API Keys.</td></tr>
+            <tr><td>4</td><td>Webhook secret</td><td>Already obtainable today via Dashboard &rarr; Webhooks.</td></tr>
+            <tr><td>5</td><td>npm publish access / CI</td><td>An npm account/org + token, and a workflow to actually run <code>npm publish</code>.</td></tr>
+            <tr><td>6</td><td>Type accuracy vs. drift</td><td>Types are hand-written from current code, not generated from the OpenAPI/Swagger spec &mdash; recommended follow-up, not required.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  packages/sdk &middot; sszentronics-sdk v0.1.0 &middot; 14 passing tests &middot; see docs/SDK.md in the repo for backend implementation notes.
+</footer>
