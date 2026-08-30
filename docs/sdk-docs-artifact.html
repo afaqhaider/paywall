@@ -1,4 +1,4 @@
-<title>SS Zentronics SDK</title>
+<title>SSCodeAxis SDK</title>
 <style>
   @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
@@ -393,7 +393,7 @@
   <div class="topbar-inner">
     <div class="brand">
       <span class="brand-mark">SZ</span>
-      SS Zentronics
+      SSCodeAxis
       <span class="brand-sub">SDK Reference</span>
     </div>
     <div class="topbar-right">
@@ -404,10 +404,10 @@
 </div>
 
 <div class="hero">
-  <p class="hero-eyebrow">packages/sdk · sszentronics-sdk</p>
+  <p class="hero-eyebrow">packages/sdk · @sscodeaxis/paywall-sdk</p>
   <h1>Entitlements, licensing, devices, and webhooks &mdash; from your own backend.</h1>
   <p>A small, dependency-free Node.js client for the platform's API-key-authenticated runtime endpoints. Answer &ldquo;can this customer do X&rdquo; in one call, validate a license key someone typed in, register a device, and verify inbound webhooks &mdash; without hand-rolling HTTP.</p>
-  <div class="hero-install"><span class="prompt">$</span> <span class="cmd">npm install sszentronics-sdk</span></div>
+  <div class="hero-install"><span class="prompt">$</span> <span class="cmd">npm install @sscodeaxis/paywall-sdk</span></div>
 </div>
 
 <div class="shell">
@@ -442,7 +442,7 @@
       <p class="kicker">01 &middot; Setup</p>
       <h2>Quickstart</h2>
       <p class="lede">One client, four resource groups. Configure it once with your API key and the platform's base URL.</p>
-      <pre><code><span class="tok-kw">import</span> { PaywallSDK } <span class="tok-kw">from</span> <span class="tok-str">"sszentronics-sdk"</span>;
+      <pre><code><span class="tok-kw">import</span> { PaywallSDK } <span class="tok-kw">from</span> <span class="tok-str">"@sscodeaxis/paywall-sdk"</span>;
 
 <span class="tok-kw">const</span> sdk = <span class="tok-kw">new</span> <span class="tok-fn">PaywallSDK</span>({
   apiKey: process.env.PLATFORM_API_KEY!,  <span class="tok-com">// Dashboard -> API Keys</span>
@@ -548,7 +548,7 @@
       <p class="kicker">03 &middot; Reference</p>
       <h2>Webhooks</h2>
       <p class="lede">Verifies and parses inbound webhooks, matching <code>webhook-dispatch.service.ts</code>&rsquo;s signing scheme: <code>HMAC-SHA256(secret, rawBody)</code>, sent as <code>X-Webhook-Signature: sha256=&hellip;</code>.</p>
-      <pre><code><span class="tok-kw">import</span> { constructWebhookEvent } <span class="tok-kw">from</span> <span class="tok-str">"sszentronics-sdk"</span>;
+      <pre><code><span class="tok-kw">import</span> { constructWebhookEvent } <span class="tok-kw">from</span> <span class="tok-str">"@sscodeaxis/paywall-sdk"</span>;
 
 <span class="tok-com">// Express &mdash; MUST use the raw body, not an already-parsed one</span>
 app.<span class="tok-fn">post</span>(<span class="tok-str">"/webhooks/platform"</span>, express.<span class="tok-fn">raw</span>({ type: <span class="tok-str">"application/json"</span> }), (req, res) => {
@@ -605,7 +605,7 @@ app.<span class="tok-fn">post</span>(<span class="tok-str">"/webhooks/platform"<
         <table>
           <thead><tr><th>#</th><th>What</th><th>Needed</th></tr></thead>
           <tbody>
-            <tr><td>1</td><td>npm package name</td><td>Confirm final branding before publishing &mdash; <code>sszentronics-sdk</code> isn&rsquo;t reserved or verified available.</td></tr>
+            <tr><td>1</td><td>npm package name</td><td>Confirm final branding before publishing &mdash; <code>@sscodeaxis/paywall-sdk</code> isn&rsquo;t reserved or verified available.</td></tr>
             <tr><td>2</td><td><code>baseUrl</code></td><td>A stable, public API domain &mdash; no default is baked into the client.</td></tr>
             <tr><td>3</td><td>API key</td><td>Already obtainable today via Dashboard &rarr; API Keys.</td></tr>
             <tr><td>4</td><td>Webhook secret</td><td>Already obtainable today via Dashboard &rarr; Webhooks.</td></tr>
@@ -619,5 +619,5 @@ app.<span class="tok-fn">post</span>(<span class="tok-str">"/webhooks/platform"<
 </div>
 
 <footer>
-  packages/sdk &middot; sszentronics-sdk v0.1.0 &middot; 14 passing tests &middot; see docs/SDK.md in the repo for backend implementation notes.
+  packages/sdk &middot; @sscodeaxis/paywall-sdk v0.1.0 &middot; 14 passing tests &middot; see docs/SDK.md in the repo for backend implementation notes.
 </footer>
